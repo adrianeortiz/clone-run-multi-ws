@@ -118,7 +118,7 @@ jobs:
 
       - name: Upload mapping.csv as artifact
         if: ${{ success() && always() }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: mapping-csv
           path: mapping.csv
