@@ -30,10 +30,23 @@ type CustomFieldResponse struct {
 }
 
 func main() {
-	// API credentials
-	apiToken := "192913a10e3eef195106f3c619ff7a4b1293cafbc17b3c147e9c5e4d9f374366"
-	apiBase := "https://api.qase.io"
-	project := "INTEGRATIO"
+	// API credentials from environment variables
+	apiToken := os.Getenv("QASE_SOURCE_API_TOKEN")
+	if apiToken == "" {
+		fmt.Println("Error: QASE_SOURCE_API_TOKEN environment variable is required")
+		os.Exit(1)
+	}
+	
+	apiBase := os.Getenv("QASE_SOURCE_API_BASE")
+	if apiBase == "" {
+		apiBase = "https://api.qase.io"
+	}
+	
+	project := os.Getenv("QASE_SOURCE_PROJECT")
+	if project == "" {
+		fmt.Println("Error: QASE_SOURCE_PROJECT environment variable is required")
+		os.Exit(1)
+	}
 
 	// Create custom field request
 	customField := CustomFieldRequest{
