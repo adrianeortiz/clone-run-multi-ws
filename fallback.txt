@@ -1,3 +1,18 @@
-QASE_CF_ID=
-QASE_TARGET_PROJECT=
+# Source (Workspace A)
+QASE_SOURCE_API_TOKEN=
 QASE_SOURCE_PROJECT=
+
+# Target (Workspace B)
+QASE_TARGET_API_TOKEN=
+QASE_TARGET_PROJECT=
+
+# Date filtering - only migrate runs created after this date
+QASE_AFTER_DATE=2025-08-18T00:00:00Z
+
+# Mapping configuration
+QASE_MATCH_MODE=custom_field
+QASE_CF_ID=
+
+# Behavior
+QASE_DRY_RUN=true
+QASE_BULK_SIZE=200

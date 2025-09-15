@@ -1,50 +1,116 @@
-# clone-run
+# Cross-Workspace Test Run Migration
 
-This repository contains a script written in `Go` lang, which will clone results from a test run in one project to another, as per the mapping of case Ids between the two projects.
+This tool clones ALL test runs from a Qase project in Workspace A (Token A) to a project in Workspace B (Token B) that were created after a specified date, handling different case IDs via either a target-side custom field or a CSV mapping.
 
-The script uses the following environment variables:
+## Features
 
-- `QASE_API_TOKEN` - to be defined in your [repository secrets](https://docs.github.com/en/actions/security-for-github-actions/security-guides/using-secrets-in-github-actions#creating-secrets-for-a-repository). You can generate a token from [here](https://app.qase.io/user/api/token).
-- `QASE_SOURCE_PROJECT` - the project where auto-test results are posted.
-- `QASE_TARGET_PROJECT` - your project where manual + auto tests are managed.
-- `QASE_SOURCE_RUN` - id of the auto-test run, in the source project.
-- `QASE_TARGET_RUN` - id of the manual test run, in the target project.
-- `QASE_CF_ID` - This shall be the custom field's Id in the target project.
+- **Dual HTTP clients** for source and target workspaces
+- **Date filtering** to migrate runs created after a specific date
+- **Automatic run creation** in target project
+- **Two mapping modes**: custom field or CSV file
+- **Bulk posting** with chunking and retries
+- **Dry-run mode** for testing
+- **Status translation** support
+- **Environment-driven configuration**
+- **Clear logging** (no secrets in logs)
 
-If you'd like to run this script on your local machine, clone this repository, set the env varibles above and run `go run .` from the root of your repository. 
+## Environment Variables
 
-Note that you'll need to have `go` lang installed on your machine. 
+### Required
 
-The recommended way to use the script is to fork the repository to your GitHub account and use the GH Action workflows.
+- `QASE_SOURCE_API_TOKEN` - API token for source workspace
+- `QASE_SOURCE_PROJECT` - Source project code
+- `QASE_TARGET_API_TOKEN` - API token for target workspace
+- `QASE_TARGET_PROJECT` - Target project code
 
-[This article](https://help.qase.io/en/articles/9787250-how-do-i-find-my-project-code) can help in locating the project codes, or run ids.
+### Optional
 
-<br>
+- `QASE_SOURCE_API_BASE` - Source API base URL (default: https://api.qase.io)
+- `QASE_TARGET_API_BASE` - Target API base URL (default: https://api.qase.io)
+- `QASE_AFTER_DATE` - Only migrate runs created after this date (RFC3339 format, default: 2025-08-18T00:00:00Z)
+- `QASE_MATCH_MODE` - Mapping mode: `custom_field` or `csv` (default: custom_field)
+- `QASE_CF_ID` - Custom field ID for custom_field mode (required if using custom_field)
+- `QASE_MAPPING_CSV` - Path to CSV mapping file (required if using csv mode)
+- `QASE_DRY_RUN` - Dry run mode: `true` or `false` (default: true)
+- `QASE_BULK_SIZE` - Bulk posting chunk size (default: 200)
+- `QASE_STATUS_MAP` - Status translation mapping (e.g., "passed:passed,failed:failed")
 
-## How to use?
-- Create a custom field at [this page](https://developers.qase.io/reference/create-custom-field). Instructions [here](https://imgur.com/mNokJNE).
-- First, we'll need to map the test cases in the target project to corresponding test cases in the source project. 
-- Once, the mapping is complete, you can trigger the script from the Actions tab of this repository.
-  - There are three workflows available.
-  - For all three workflows, variables `QASE_CF_ID`, `QASE_SOURCE_PROJECT` and `QASE_TARGET_PROJECT` can be defined directly in the [fallback.txt](./fallback.txt) file. You can always override the vlaues defined here, while triggering the workflow manually.
- 
-### Three workflows
-1. [latest-run.yml](./.github/workflows/latest-run.yml): This automatically clones the results from the *latest* run in the source project to the *latest* run in the target project.
-2. [specify-run.yml](./.github/workflows/specify-run.yml): You can specify the `source` and `target` run ids manually, while starting the workflow.
-3. [trigger-from-qase.yml](./.github/workflows/trigger-from-qase.yml): Same as [1] – it assumes the latest run ids for both the projects, but this workflow can be triggered directly from Qase.
+## Usage
 
-All three workflows upload the test cases' mapping to the GitHub Action run, and also print the respones and payload of all requests to Stdout.
+### Custom Field Mapping Mode
 
-> When starting the third workflow from Qase, make sure to NOT trigger the workflow from either the `source` or `target` project.
+```bash
+export QASE_SOURCE_API_TOKEN="your_source_token"
+export QASE_SOURCE_PROJECT="your_source_project"
+export QASE_TARGET_API_TOKEN="your_target_token"
+export QASE_TARGET_PROJECT="your_target_project"
+export QASE_CF_ID="123"
+export QASE_AFTER_DATE="2025-08-18T00:00:00Z"
+export QASE_DRY_RUN="true"
 
-<br>
+go run .
+```
 
-## Gist of how the script works
-1. Fetches test cases from source and target projects in Qase.
-2. Maps test cases between the source and target projects using a custom field (from target project).
-3. Fetches test results from a source test run.
-4. Prepares these results for bulk creation in a target test run, including mapping test case IDs, attaching metadata, and converting status codes.
-5. Writes a mapping file to a CSV for future reference.
-6. Sends the prepared results to the target test run via the Qase API in bulk.
+### CSV Mapping Mode
 
-**Mapping Test Cases**: The script maps source test cases to their corresponding target test cases using a custom field value. It prepares an in-memory CSV with the mapping details, which includes: Source Case ID and Target Case ID.
+```bash
+export QASE_SOURCE_API_TOKEN="your_source_token"
+export QASE_SOURCE_PROJECT="your_source_project"
+export QASE_TARGET_API_TOKEN="your_target_token"
+export QASE_TARGET_PROJECT="your_target_project"
+export QASE_MATCH_MODE="csv"
+export QASE_MAPPING_CSV="./mapping.csv"
+export QASE_AFTER_DATE="2025-08-18T00:00:00Z"
+export QASE_DRY_RUN="true"
+
+go run .
+```
+
+### CSV Mapping File Format
+
+The CSV file should have the following format:
+
+```csv
+source_case_id,target_case_id
+1,101
+2,102
+3,103
+```
+
+## Output
+
+- **Console logs**: Progress information, run-by-run processing, and summary statistics
+- **case_map.out.csv**: Generated mapping file showing source → target case ID mappings
+- **Migration summary**: Total runs processed, successful/failed migrations, and result counts
+
+## GitHub Actions
+
+The included workflow (`.github/workflows/cross-workspace.yml`) provides a manual trigger with inputs for:
+- Date filtering (runs after specified date)
+- Mapping mode selection
+- Custom field ID
+- Dry run toggle
+
+Required secrets:
+- `QASE_TOKEN_WS_A` - Source workspace token
+- `QASE_TOKEN_WS_B` - Target workspace token
+
+Required variables:
+- `QASE_SOURCE_PROJECT` - Source project code
+- `QASE_TARGET_PROJECT` - Target project code
+
+## Architecture
+
+The code is organized into packages:
+
+- `api/` - HTTP client wrapper for Qase API
+- `qase/` - Qase-specific data structures and API calls
+- `mapping/` - Case ID mapping logic
+- `main.go` - Main orchestration and configuration
+
+## Error Handling
+
+- **Retries**: HTTP 429 and 5xx errors are retried with exponential backoff
+- **Validation**: Environment variables are validated on startup
+- **Logging**: Clear error messages without exposing secrets
+- **Graceful degradation**: Invalid mappings are skipped with warnings
