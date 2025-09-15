@@ -27,12 +27,12 @@ func main() {
 		fmt.Println("Error: QASE_SOURCE_API_TOKEN environment variable is required")
 		os.Exit(1)
 	}
-	
+
 	apiBase := os.Getenv("QASE_SOURCE_API_BASE")
 	if apiBase == "" {
 		apiBase = "https://api.qase.io"
 	}
-	
+
 	project := os.Getenv("QASE_SOURCE_PROJECT")
 	if project == "" {
 		fmt.Println("Error: QASE_SOURCE_PROJECT environment variable is required")
