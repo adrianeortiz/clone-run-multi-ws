@@ -19,7 +19,7 @@ on:
       cf_id:
         description: 'Custom field ID (required for custom_field mode)'
         required: false
-        default: '0'
+        default: '1'
         type: string
       dry_run:
         description: 'Dry run mode'
