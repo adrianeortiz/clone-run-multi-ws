@@ -15,6 +15,18 @@ import (
 )
 
 func main() {
+	// Debug: Print environment variables (without secrets)
+	fmt.Println("=== Environment Debug ===")
+	fmt.Printf("QASE_SOURCE_PROJECT: %s\n", os.Getenv("QASE_SOURCE_PROJECT"))
+	fmt.Printf("QASE_TARGET_PROJECT: %s\n", os.Getenv("QASE_TARGET_PROJECT"))
+	fmt.Printf("QASE_AFTER_DATE: %s\n", os.Getenv("QASE_AFTER_DATE"))
+	fmt.Printf("QASE_MATCH_MODE: %s\n", os.Getenv("QASE_MATCH_MODE"))
+	fmt.Printf("QASE_CF_ID: %s\n", os.Getenv("QASE_CF_ID"))
+	fmt.Printf("QASE_DRY_RUN: %s\n", os.Getenv("QASE_DRY_RUN"))
+	fmt.Printf("QASE_SOURCE_API_TOKEN: %s\n", maskToken(os.Getenv("QASE_SOURCE_API_TOKEN")))
+	fmt.Printf("QASE_TARGET_API_TOKEN: %s\n", maskToken(os.Getenv("QASE_TARGET_API_TOKEN")))
+	fmt.Println("========================")
+
 	// Load environment variables
 	config, err := loadConfig()
 	if err != nil {
@@ -336,4 +348,15 @@ func getIntDefault(key string, defaultValue int) int {
 		}
 	}
 	return defaultValue
+}
+
+// maskToken masks the token for logging (shows first 8 and last 4 characters)
+func maskToken(token string) string {
+	if token == "" {
+		return "<not set>"
+	}
+	if len(token) <= 12 {
+		return "***"
+	}
+	return token[:8] + "..." + token[len(token)-4:]
 }

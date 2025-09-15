@@ -63,3 +63,4 @@ jobs:
         name: case-mapping
         path: case_map.out.csv
         retention-days: 30
+        if-no-files-found: ignore
