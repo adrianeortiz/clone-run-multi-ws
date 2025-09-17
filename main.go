@@ -56,7 +56,7 @@ func main() {
 
 	// Build mapping
 	var caseMapping map[int]int
-	
+
 	// Check if source and target projects are the same
 	if config.SourceProject == config.TargetProject {
 		fmt.Println("Source and target projects are the same - using direct case ID mapping")

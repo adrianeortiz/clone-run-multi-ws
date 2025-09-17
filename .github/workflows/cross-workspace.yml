@@ -45,8 +45,8 @@ jobs:
         
     - name: Run migration
       env:
-        QASE_SOURCE_API_TOKEN: ${{ secrets.QASE_TOKEN_WS_A }}
-        QASE_TARGET_API_TOKEN: ${{ secrets.QASE_TOKEN_WS_B }}
+        QASE_SOURCE_API_TOKEN: ${{ secrets.QASE_SOURCE_API_TOKEN }}
+        QASE_TARGET_API_TOKEN: ${{ secrets.QASE_TARGET_API_TOKEN }}
         QASE_SOURCE_PROJECT: ${{ vars.QASE_SOURCE_PROJECT }}
         QASE_TARGET_PROJECT: ${{ vars.QASE_TARGET_PROJECT }}
         QASE_AFTER_DATE: ${{ inputs.after_date }}
