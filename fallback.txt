@@ -11,7 +11,7 @@ QASE_AFTER_DATE=2025-08-18T00:00:00Z
 
 # Mapping configuration
 QASE_MATCH_MODE=custom_field
-QASE_CF_ID=1
+QASE_CF_ID=2
 
 # Behavior
 QASE_DRY_RUN=true

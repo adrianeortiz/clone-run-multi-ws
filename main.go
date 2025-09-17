@@ -55,19 +55,30 @@ func main() {
 	}
 
 	// Build mapping
-	fmt.Printf("Building mapping using %s mode...\n", config.MatchMode)
-	caseMapping, err := mapping.Build(
-		mapping.Mode(config.MatchMode),
-		srcCases,
-		tgtCases,
-		config.CustomFieldID,
-		config.MappingCSV,
-	)
-	if err != nil {
-		log.Fatalf("Failed to build mapping: %v", err)
+	var caseMapping map[int]int
+	
+	// Check if source and target projects are the same
+	if config.SourceProject == config.TargetProject {
+		fmt.Println("Source and target projects are the same - using direct case ID mapping")
+		caseMapping = make(map[int]int)
+		for caseID := range srcCases {
+			caseMapping[caseID] = caseID // Direct mapping: source ID = target ID
+		}
+		fmt.Printf("Built direct mapping with %d entries\n", len(caseMapping))
+	} else {
+		fmt.Printf("Building mapping using %s mode...\n", config.MatchMode)
+		caseMapping, err = mapping.Build(
+			mapping.Mode(config.MatchMode),
+			srcCases,
+			tgtCases,
+			config.CustomFieldID,
+			config.MappingCSV,
+		)
+		if err != nil {
+			log.Fatalf("Failed to build mapping: %v", err)
+		}
+		fmt.Printf("Built mapping with %d entries\n", len(caseMapping))
 	}
-
-	fmt.Printf("Built mapping with %d entries\n", len(caseMapping))
 
 	// Fetch source runs after the specified date
 	fmt.Printf("Fetching runs from source project after %s...\n", config.AfterDate.Format("2006-01-02"))
