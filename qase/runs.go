@@ -50,7 +50,7 @@ type CreateRunResponse struct {
 func GetRuns(c *api.Client, project string, afterDate time.Time) ([]Run, error) {
 	var allRuns []Run
 	page := 1
-	limit := 100
+	limit := 1000
 
 	for {
 		// Build URL with pagination
@@ -82,15 +82,23 @@ func GetRuns(c *api.Client, project string, afterDate time.Time) ([]Run, error) 
 			return nil, fmt.Errorf("failed to parse response: %w", err)
 		}
 
-		// Filter runs by date
+		// Filter runs by date and check for early exit
+		pageHasNewRuns := false
 		for _, run := range response.Result.Entities {
 			if run.CreatedAt.After(afterDate) {
 				allRuns = append(allRuns, run)
+				pageHasNewRuns = true
 			}
 		}
 
 		fmt.Printf("Fetched page %d: %d runs (filtered: %d after %s)\n",
 			page, len(response.Result.Entities), len(allRuns), afterDate.Format("2006-01-02"))
+
+		// Early exit: if this page has no runs after the date, we can stop
+		if !pageHasNewRuns {
+			fmt.Printf("No more runs found after %s, stopping pagination\n", afterDate.Format("2006-01-02"))
+			break
+		}
 
 		// Check if we've fetched all runs
 		if len(response.Result.Entities) < limit {

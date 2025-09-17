@@ -102,8 +102,8 @@ func postChunk(c *api.Client, project string, runID int, chunk []BulkItem) error
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	path := fmt.Sprintf("/result/%s/%d/bulk", project, runID)
-	req, err := c.NewRequest("POST", path, body)
+	path := fmt.Sprintf("/result/%s/%d/results", project, runID)
+	req, err := c.NewV2Request("POST", path, body)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}

@@ -30,7 +30,7 @@ type ResultListResponse struct {
 func GetRunResults(c *api.Client, project string, runID int) ([]Result, error) {
 	var allResults []Result
 	page := 1
-	limit := 100
+	limit := 1000
 
 	for {
 		// Build URL with pagination and run filter

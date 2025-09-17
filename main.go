@@ -99,64 +99,109 @@ func main() {
 		log.Printf("Warning: Failed to write mapping artifact: %v", err)
 	}
 
-	// Process each run
+	// Process runs concurrently
 	totalResults := 0
 	totalSkipped := 0
 	successfulRuns := 0
 	failedRuns := 0
+	startTime := time.Now()
 
-	for i, srcRun := range srcRuns {
-		fmt.Printf("\n--- Processing run %d/%d: %s (ID: %d) ---\n",
-			i+1, len(srcRuns), srcRun.Title, srcRun.ID)
-
-		// Fetch results for this run
-		fmt.Printf("Fetching results from run %d...\n", srcRun.ID)
-		results, err := qase.GetRunResults(srcClient, config.SourceProject, srcRun.ID)
-		if err != nil {
-			log.Printf("Failed to fetch results for run %d: %v", srcRun.ID, err)
-			failedRuns++
-			continue
-		}
-
-		if len(results) == 0 {
-			fmt.Printf("No results found in run %d, skipping\n", srcRun.ID)
-			continue
-		}
-
-		// Transform results to target case IDs
-		fmt.Println("Transforming results...")
-		bulkItems, skipped := transformResults(results, caseMapping, config.StatusMap)
-
-		fmt.Printf("Prepared %d results for posting, skipped %d unmapped results\n", len(bulkItems), skipped)
-		totalResults += len(bulkItems)
-		totalSkipped += skipped
-
-		// Handle dry run mode
-		if config.DryRun {
-			fmt.Printf("DRY RUN MODE - Would create run '%s' with %d results\n", srcRun.Title, len(bulkItems))
-			continue
-		}
-
-		// Create target run
-		fmt.Printf("Creating target run: %s\n", srcRun.Title)
-		tgtRun, err := qase.CreateRun(tgtClient, config.TargetProject, srcRun.Title, srcRun.Description)
-		if err != nil {
-			log.Printf("Failed to create target run for %s: %v", srcRun.Title, err)
-			failedRuns++
-			continue
-		}
-
-		// Post results to target run
-		fmt.Printf("Posting %d results to target run %d...\n", len(bulkItems), tgtRun.ID)
-		if err := qase.PostBulkResults(tgtClient, config.TargetProject, tgtRun.ID, bulkItems, config.BulkSize); err != nil {
-			log.Printf("Failed to post results to run %d: %v", tgtRun.ID, err)
-			failedRuns++
-			continue
-		}
-
-		successfulRuns++
-		fmt.Printf("Successfully migrated run %d -> %d\n", srcRun.ID, tgtRun.ID)
+	// Create channels for coordination
+	type runResult struct {
+		runIndex     int
+		results      int
+		skipped      int
+		success      bool
+		error        error
+		runDuration  time.Duration
 	}
+
+	resultsChan := make(chan runResult, len(srcRuns))
+	semaphore := make(chan struct{}, config.Concurrency)
+
+	fmt.Printf("Processing %d runs with concurrency limit of %d\n", len(srcRuns), config.Concurrency)
+
+	// Launch goroutines for each run
+	for i, srcRun := range srcRuns {
+		go func(runIndex int, run qase.Run) {
+			// Acquire semaphore
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+
+			runStartTime := time.Now()
+			fmt.Printf("\n--- Processing run %d/%d: %s (ID: %d) ---\n",
+				runIndex+1, len(srcRuns), run.Title, run.ID)
+
+			// Fetch results for this run
+			fmt.Printf("Fetching results from run %d...\n", run.ID)
+			results, err := qase.GetRunResults(srcClient, config.SourceProject, run.ID)
+			if err != nil {
+				log.Printf("Failed to fetch results for run %d: %v", run.ID, err)
+				resultsChan <- runResult{runIndex: runIndex, success: false, error: err, runDuration: time.Since(runStartTime)}
+				return
+			}
+
+			if len(results) == 0 {
+				fmt.Printf("No results found in run %d, skipping\n", run.ID)
+				resultsChan <- runResult{runIndex: runIndex, success: true, runDuration: time.Since(runStartTime)}
+				return
+			}
+
+			// Transform results to target case IDs
+			fmt.Println("Transforming results...")
+			bulkItems, skipped := transformResults(results, caseMapping, config.StatusMap)
+
+			fmt.Printf("Prepared %d results for posting, skipped %d unmapped results\n", len(bulkItems), skipped)
+
+			// Handle dry run mode
+			if config.DryRun {
+				fmt.Printf("DRY RUN MODE - Would create run '%s' with %d results\n", run.Title, len(bulkItems))
+				resultsChan <- runResult{
+					runIndex: runIndex, success: true, results: len(bulkItems), skipped: skipped,
+					runDuration: time.Since(runStartTime),
+				}
+				return
+			}
+
+			// Create target run
+			fmt.Printf("Creating target run: %s\n", run.Title)
+			tgtRun, err := qase.CreateRun(tgtClient, config.TargetProject, run.Title, run.Description)
+			if err != nil {
+				log.Printf("Failed to create target run for %s: %v", run.Title, err)
+				resultsChan <- runResult{runIndex: runIndex, success: false, error: err, runDuration: time.Since(runStartTime)}
+				return
+			}
+
+			// Post results to target run
+			fmt.Printf("Posting %d results to target run %d...\n", len(bulkItems), tgtRun.ID)
+			if err := qase.PostBulkResults(tgtClient, config.TargetProject, tgtRun.ID, bulkItems, config.BulkSize); err != nil {
+				log.Printf("Failed to post results to run %d: %v", tgtRun.ID, err)
+				resultsChan <- runResult{runIndex: runIndex, success: false, error: err, runDuration: time.Since(runStartTime)}
+				return
+			}
+
+			runDuration := time.Since(runStartTime)
+			fmt.Printf("Successfully migrated run %d -> %d (took %v)\n", run.ID, tgtRun.ID, runDuration)
+			resultsChan <- runResult{
+				runIndex: runIndex, success: true, results: len(bulkItems), skipped: skipped,
+				runDuration: runDuration,
+			}
+		}(i, srcRun)
+	}
+
+	// Collect results
+	for i := 0; i < len(srcRuns); i++ {
+		result := <-resultsChan
+		if result.success {
+			successfulRuns++
+			totalResults += result.results
+			totalSkipped += result.skipped
+		} else {
+			failedRuns++
+		}
+	}
+
+	totalDuration := time.Since(startTime)
 
 	// Print summary
 	fmt.Printf("\n=== Migration Summary ===\n")
@@ -165,6 +210,7 @@ func main() {
 	fmt.Printf("Failed migrations: %d\n", failedRuns)
 	fmt.Printf("Total results migrated: %d\n", totalResults)
 	fmt.Printf("Total results skipped: %d\n", totalSkipped)
+	fmt.Printf("Total execution time: %v\n", totalDuration)
 
 	if config.DryRun {
 		fmt.Println("\nDRY RUN MODE - No actual changes were made")
@@ -194,9 +240,10 @@ type Config struct {
 	MappingCSV    string
 
 	// Behavior
-	DryRun    bool
-	BulkSize  int
-	StatusMap map[string]string
+	DryRun      bool
+	BulkSize    int
+	Concurrency int
+	StatusMap   map[string]string
 }
 
 // loadConfig loads configuration from environment variables
@@ -207,6 +254,7 @@ func loadConfig() (*Config, error) {
 		MatchMode:     getEnvDefault("QASE_MATCH_MODE", "custom_field"),
 		DryRun:        getEnvDefault("QASE_DRY_RUN", "true") == "true",
 		BulkSize:      getIntDefault("QASE_BULK_SIZE", 200),
+		Concurrency:   getIntDefault("QASE_CONCURRENCY", 3),
 	}
 
 	// Required environment variables
