@@ -35,7 +35,7 @@ type CaseListResponse struct {
 func GetCases(c *api.Client, project string) (map[int]Case, error) {
 	cases := make(map[int]Case)
 	page := 1
-	limit := 1000
+	limit := 100
 
 	for {
 		// Build URL with pagination

@@ -108,12 +108,12 @@ func main() {
 
 	// Create channels for coordination
 	type runResult struct {
-		runIndex     int
-		results      int
-		skipped      int
-		success      bool
-		error        error
-		runDuration  time.Duration
+		runIndex    int
+		results     int
+		skipped     int
+		success     bool
+		error       error
+		runDuration time.Duration
 	}
 
 	resultsChan := make(chan runResult, len(srcRuns))
@@ -254,7 +254,7 @@ func loadConfig() (*Config, error) {
 		MatchMode:     getEnvDefault("QASE_MATCH_MODE", "custom_field"),
 		DryRun:        getEnvDefault("QASE_DRY_RUN", "true") == "true",
 		BulkSize:      getIntDefault("QASE_BULK_SIZE", 200),
-		Concurrency:   getIntDefault("QASE_CONCURRENCY", 3),
+		Concurrency:   getIntDefault("QASE_CONCURRENCY", 1),
 	}
 
 	// Required environment variables

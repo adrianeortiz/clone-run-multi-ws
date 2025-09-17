@@ -50,7 +50,7 @@ type CreateRunResponse struct {
 func GetRuns(c *api.Client, project string, afterDate time.Time) ([]Run, error) {
 	var allRuns []Run
 	page := 1
-	limit := 1000
+	limit := 100
 
 	for {
 		// Build URL with pagination
