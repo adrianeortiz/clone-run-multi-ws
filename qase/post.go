@@ -102,37 +102,88 @@ func postChunk(c *api.Client, project string, runID int, chunk []BulkItem) error
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	// Try v2 API first
 	path := fmt.Sprintf("/result/%s/%d/results", project, runID)
 	req, err := c.NewV2Request("POST", path, body)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return fmt.Errorf("failed to create v2 request: %w", err)
 	}
 
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to make request: %w", err)
+		return fmt.Errorf("failed to make v2 request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err = io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("failed to read response: %w", err)
+		return fmt.Errorf("failed to read v2 response: %w", err)
+	}
+
+	// If v2 fails, fallback to v1
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("v2 API failed with status %d, falling back to v1: %s\n", resp.StatusCode, string(body))
+		return postChunkV1(c, project, runID, chunk)
+	}
+
+	// Debug: Print response for v2 API
+	fmt.Printf("v2 API response: %s\n", string(body))
+
+	var response BulkResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		fmt.Printf("v2 API response parsing failed, falling back to v1: %v\n", err)
+		return postChunkV1(c, project, runID, chunk)
+	}
+
+	if !response.Status {
+		fmt.Printf("v2 API returned status false, falling back to v1: %s\n", string(body))
+		return postChunkV1(c, project, runID, chunk)
+	}
+
+	fmt.Printf("Chunk posted successfully via v2 API: %d results\n", len(chunk))
+	return nil
+}
+
+// postChunkV1 posts a single chunk of results using v1 API
+func postChunkV1(c *api.Client, project string, runID int, chunk []BulkItem) error {
+	reqBody := BulkRequest{Results: chunk}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to marshal v1 request: %w", err)
+	}
+
+	path := fmt.Sprintf("/result/%s/%d/bulk", project, runID)
+	req, err := c.NewRequest("POST", path, body)
+	if err != nil {
+		return fmt.Errorf("failed to create v1 request: %w", err)
+	}
+
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to make v1 request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read v1 response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
+		return fmt.Errorf("v1 API request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
 	var response BulkResponse
 	if err := json.Unmarshal(body, &response); err != nil {
-		return fmt.Errorf("failed to parse response: %w", err)
+		return fmt.Errorf("failed to parse v1 response: %w", err)
 	}
 
 	if !response.Status {
-		return fmt.Errorf("bulk request failed: %s", string(body))
+		return fmt.Errorf("v1 bulk request failed: %s", string(body))
 	}
 
-	fmt.Printf("Chunk posted successfully: %d results\n", len(chunk))
+	fmt.Printf("Chunk posted successfully via v1 API: %d results\n", len(chunk))
 	return nil
 }
 
