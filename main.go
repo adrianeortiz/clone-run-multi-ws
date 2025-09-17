@@ -254,7 +254,7 @@ func loadConfig() (*Config, error) {
 		MatchMode:     getEnvDefault("QASE_MATCH_MODE", "custom_field"),
 		DryRun:        getEnvDefault("QASE_DRY_RUN", "true") == "true",
 		BulkSize:      getIntDefault("QASE_BULK_SIZE", 200),
-		Concurrency:   getIntDefault("QASE_CONCURRENCY", 1),
+		Concurrency:   getIntDefault("QASE_CONCURRENCY", 2),
 	}
 
 	// Required environment variables
