@@ -46,7 +46,7 @@ func (c *Client) NewRequest(method, path string, body []byte) (*http.Request, er
 		return nil, err
 	}
 
-	req.Header.Set("X-Token", c.Token)
+	req.Header.Set("Token", c.Token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
