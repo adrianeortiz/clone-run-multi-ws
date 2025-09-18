@@ -99,50 +99,15 @@ func main() {
 		log.Printf("Warning: Failed to write mapping artifact: %v", err)
 	}
 
-	// ULTRA-OPTIMIZED APPROACH: Fetch runs first, then results for those runs
-	fmt.Printf("Using ultra-optimized approach - fetching runs and results efficiently...\n")
+	// SIMPLIFIED APPROACH: Use the date-based results API directly
+	fmt.Printf("Using simplified date-based approach - fetching results directly after %s...\n", config.AfterDate.Format("2006-01-02"))
 	
 	startTime := time.Now()
 	
-	// Extract run IDs from the runs we found
-	runIDs := make([]int, 0, len(srcRuns))
-	for _, run := range srcRuns {
-		runIDs = append(runIDs, run.ID)
-	}
-	
-	fmt.Printf("Found %d runs after %s\n", len(runIDs), config.AfterDate.Format("2006-01-02"))
-	fmt.Printf("Run IDs: %v\n", runIDs)
-	
-	// If we have too many runs, process in batches to avoid URL length limits
-	const maxRunsPerBatch = 50
-	var allResults []qase.Result
-	
-	if len(runIDs) <= maxRunsPerBatch {
-		fmt.Printf("Fetching results for %d runs in one batch...\n", len(runIDs))
-		results, err := qase.GetResultsForRuns(srcClient, config.SourceProject, runIDs)
-		if err != nil {
-			log.Fatalf("Failed to fetch results: %v", err)
-		}
-		allResults = results
-	} else {
-		fmt.Printf("Processing %d runs in batches of %d...\n", len(runIDs), maxRunsPerBatch)
-		for i := 0; i < len(runIDs); i += maxRunsPerBatch {
-			end := i + maxRunsPerBatch
-			if end > len(runIDs) {
-				end = len(runIDs)
-			}
-			batch := runIDs[i:end]
-			fmt.Printf("Fetching batch %d/%d: runs %d-%d (%d runs)\n", 
-				(i/maxRunsPerBatch)+1, (len(runIDs)+maxRunsPerBatch-1)/maxRunsPerBatch, 
-				i+1, end, len(batch))
-			
-			results, err := qase.GetResultsForRuns(srcClient, config.SourceProject, batch)
-			if err != nil {
-				log.Fatalf("Failed to fetch results for batch %d: %v", (i/maxRunsPerBatch)+1, err)
-			}
-			allResults = append(allResults, results...)
-			fmt.Printf("Batch completed: %d results (total so far: %d)\n", len(results), len(allResults))
-		}
+	// Fetch all results after the date directly - this should be much faster
+	allResults, err := qase.GetResultsAfterDate(srcClient, config.SourceProject, config.AfterDate)
+	if err != nil {
+		log.Fatalf("Failed to fetch results: %v", err)
 	}
 	
 	fmt.Printf("Fetched %d total results in %v\n", len(allResults), time.Since(startTime))
@@ -160,6 +125,11 @@ func main() {
 
 	fmt.Printf("Grouped results into %d runs\n", len(resultsByRun))
 
+	// Add timeout protection
+	timeout := 30 * time.Minute
+	timeoutTimer := time.NewTimer(timeout)
+	defer timeoutTimer.Stop()
+	
 	// Process each run that has results
 	totalResults := 0
 	totalSkipped := 0
@@ -255,15 +225,24 @@ func main() {
 		runIndex++
 	}
 
-	// Collect results
-	for i := 0; i < len(resultsByRun); i++ {
-		result := <-resultsChan
-		if result.success {
-			successfulRuns++
-			totalResults += result.results
-			totalSkipped += result.skipped
-		} else {
-			failedRuns++
+	// Collect results with timeout
+	completed := 0
+	for completed < len(resultsByRun) {
+		select {
+		case result := <-resultsChan:
+			completed++
+			if result.success {
+				successfulRuns++
+				totalResults += result.results
+				totalSkipped += result.skipped
+			} else {
+				failedRuns++
+			}
+			fmt.Printf("Completed %d/%d runs\n", completed, len(resultsByRun))
+			
+		case <-timeoutTimer.C:
+			fmt.Printf("TIMEOUT: Migration exceeded %v limit. Completed %d/%d runs\n", timeout, completed, len(resultsByRun))
+			break
 		}
 	}
 
