@@ -7,7 +7,7 @@ QASE_TARGET_API_TOKEN=
 QASE_TARGET_PROJECT=
 
 # Date filtering - only migrate runs created after this date
-QASE_AFTER_DATE=2025-08-18T00:00:00Z
+QASE_AFTER_DATE=1755500400
 
 # Mapping configuration
 QASE_MATCH_MODE=custom_field

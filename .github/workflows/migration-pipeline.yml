@@ -12,9 +12,9 @@ on:
         required: true
         default: 'INTEGRATIO'
       after_date:
-        description: 'Date to filter runs after (Unix timestamp or ISO format)'
+        description: 'Date to filter runs after (Unix timestamp)'
         required: true
-        default: '1755475200'
+        default: '1755500400'
       match_mode:
         description: 'Case matching mode'
         required: true

@@ -328,18 +328,15 @@ func loadConfig() Config {
 		log.Fatal("QASE_TARGET_PROJECT is required")
 	}
 
-	// Parse after date - try Unix timestamp first, then date string
-	afterDateStr := getEnv("QASE_AFTER_DATE", "1755475200") // Default to Aug 18, 2025 Unix timestamp
-	
+	// Parse after date - Unix timestamp only
+	afterDateStr := getEnv("QASE_AFTER_DATE", "1755500400") // Default to Aug 18, 2025 Unix timestamp
+
 	var afterDate time.Time
 	var err error
-	
-	// Try Unix timestamp first (much faster and more reliable)
+
+	// Parse Unix timestamp only
 	if afterDate, err = utils.ParseUnixTimestamp(afterDateStr); err != nil {
-		// Fallback to date string parsing
-		if afterDate, err = utils.ParseDateFlexible(afterDateStr); err != nil {
-			log.Fatalf("Invalid QASE_AFTER_DATE format '%s': %v", afterDateStr, err)
-		}
+		log.Fatalf("Invalid QASE_AFTER_DATE format '%s' (must be Unix timestamp): %v", afterDateStr, err)
 	}
 	config.AfterDate = afterDate
 

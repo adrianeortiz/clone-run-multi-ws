@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       after_date:
-        description: 'Only migrate runs created after this date (RFC3339 format)'
+        description: 'Only migrate runs created after this date (Unix timestamp)'
         required: false
-        default: '2025-08-18T00:00:00Z'
+        default: '1755500400'
         type: string
       match_mode:
         description: 'Mapping mode'

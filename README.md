@@ -27,7 +27,7 @@ This tool clones ALL test runs from a Qase project in Workspace A (Token A) to a
 
 - `QASE_SOURCE_API_BASE` - Source API base URL (default: https://api.qase.io)
 - `QASE_TARGET_API_BASE` - Target API base URL (default: https://api.qase.io)
-- `QASE_AFTER_DATE` - Only migrate runs created after this date (RFC3339 format, default: 2025-08-18T00:00:00Z)
+- `QASE_AFTER_DATE` - Only migrate runs created after this date (Unix timestamp, default: 1755500400)
 - `QASE_MATCH_MODE` - Mapping mode: `custom_field` or `csv` (default: custom_field)
 - `QASE_CF_ID` - Custom field ID for custom_field mode (required if using custom_field)
 - `QASE_MAPPING_CSV` - Path to CSV mapping file (required if using csv mode)
@@ -45,7 +45,7 @@ export QASE_SOURCE_PROJECT="your_source_project"
 export QASE_TARGET_API_TOKEN="your_target_token"
 export QASE_TARGET_PROJECT="your_target_project"
 export QASE_CF_ID="123"
-export QASE_AFTER_DATE="2025-08-18T00:00:00Z"
+export QASE_AFTER_DATE="1755500400"
 export QASE_DRY_RUN="true"
 
 go run .
@@ -60,7 +60,7 @@ export QASE_TARGET_API_TOKEN="your_target_token"
 export QASE_TARGET_PROJECT="your_target_project"
 export QASE_MATCH_MODE="csv"
 export QASE_MAPPING_CSV="./mapping.csv"
-export QASE_AFTER_DATE="2025-08-18T00:00:00Z"
+export QASE_AFTER_DATE="1755500400"
 export QASE_DRY_RUN="true"
 
 go run .

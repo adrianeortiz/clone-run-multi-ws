@@ -40,12 +40,12 @@ func ParseDateWithFallback(dateStr string) (time.Time, error) {
 	if t, err := ParseDateFlexible(dateStr); err == nil {
 		return t, nil
 	}
-	
+
 	// If that fails, try parsing as Unix timestamp
 	if t, err := time.Parse("1136239445", dateStr); err == nil {
 		return t, nil
 	}
-	
+
 	return time.Time{}, fmt.Errorf("unable to parse date '%s' as date string or Unix timestamp", dateStr)
 }
 
@@ -55,7 +55,7 @@ func ParseUnixTimestamp(timestampStr string) (time.Time, error) {
 	if timestamp, err := strconv.ParseInt(timestampStr, 10, 64); err == nil {
 		return time.Unix(timestamp, 0), nil
 	}
-	
+
 	return time.Time{}, fmt.Errorf("unable to parse '%s' as Unix timestamp", timestampStr)
 }
 

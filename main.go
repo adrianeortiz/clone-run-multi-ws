@@ -12,6 +12,7 @@ import (
 	"github.com/adrianeortiz/clone-run-multi-ws/api"
 	"github.com/adrianeortiz/clone-run-multi-ws/mapping"
 	"github.com/adrianeortiz/clone-run-multi-ws/qase"
+	"github.com/adrianeortiz/clone-run-multi-ws/utils"
 )
 
 func main() {
@@ -310,10 +311,10 @@ func loadConfig() (*Config, error) {
 	config.TargetProject = mustEnv("QASE_TARGET_PROJECT")
 
 	// Date filtering - default to August 18th, 2025
-	afterDateStr := getEnvDefault("QASE_AFTER_DATE", "2025-08-18T00:00:00Z")
-	afterDate, err := time.Parse(time.RFC3339, afterDateStr)
+	afterDateStr := getEnvDefault("QASE_AFTER_DATE", "1755500400")
+	afterDate, err := utils.ParseUnixTimestamp(afterDateStr)
 	if err != nil {
-		return nil, fmt.Errorf("invalid QASE_AFTER_DATE format (use RFC3339): %w", err)
+		return nil, fmt.Errorf("invalid QASE_AFTER_DATE format (must be Unix timestamp): %w", err)
 	}
 	config.AfterDate = afterDate
 

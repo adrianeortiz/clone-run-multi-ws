@@ -9,6 +9,7 @@ import (
 
 	"github.com/adrianeortiz/clone-run-multi-ws/api"
 	"github.com/adrianeortiz/clone-run-multi-ws/qase"
+	"github.com/adrianeortiz/clone-run-multi-ws/utils"
 )
 
 type RunsData struct {
@@ -104,8 +105,8 @@ func loadConfig() Config {
 	}
 
 	// Parse after date
-	afterDateStr := getEnv("QASE_AFTER_DATE", "2025-08-18T00:00:00Z")
-	afterDate, err := time.Parse(time.RFC3339, afterDateStr)
+	afterDateStr := getEnv("QASE_AFTER_DATE", "1755500400")
+	afterDate, err := utils.ParseUnixTimestamp(afterDateStr)
 	if err != nil {
 		log.Fatalf("Invalid QASE_AFTER_DATE format: %v", err)
 	}
