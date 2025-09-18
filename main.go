@@ -110,27 +110,54 @@ func main() {
 		runIDs = append(runIDs, run.ID)
 	}
 	
-	fmt.Printf("Fetching results for %d specific runs...\n", len(runIDs))
+	fmt.Printf("Found %d runs after %s\n", len(runIDs), config.AfterDate.Format("2006-01-02"))
+	fmt.Printf("Run IDs: %v\n", runIDs)
 	
-	// Fetch results for the specific runs we found
-	allResults, err := qase.GetResultsForRuns(srcClient, config.SourceProject, runIDs)
-	if err != nil {
-		log.Fatalf("Failed to fetch results: %v", err)
+	// If we have too many runs, process in batches to avoid URL length limits
+	const maxRunsPerBatch = 50
+	var allResults []qase.Result
+	
+	if len(runIDs) <= maxRunsPerBatch {
+		fmt.Printf("Fetching results for %d runs in one batch...\n", len(runIDs))
+		results, err := qase.GetResultsForRuns(srcClient, config.SourceProject, runIDs)
+		if err != nil {
+			log.Fatalf("Failed to fetch results: %v", err)
+		}
+		allResults = results
+	} else {
+		fmt.Printf("Processing %d runs in batches of %d...\n", len(runIDs), maxRunsPerBatch)
+		for i := 0; i < len(runIDs); i += maxRunsPerBatch {
+			end := i + maxRunsPerBatch
+			if end > len(runIDs) {
+				end = len(runIDs)
+			}
+			batch := runIDs[i:end]
+			fmt.Printf("Fetching batch %d/%d: runs %d-%d (%d runs)\n", 
+				(i/maxRunsPerBatch)+1, (len(runIDs)+maxRunsPerBatch-1)/maxRunsPerBatch, 
+				i+1, end, len(batch))
+			
+			results, err := qase.GetResultsForRuns(srcClient, config.SourceProject, batch)
+			if err != nil {
+				log.Fatalf("Failed to fetch results for batch %d: %v", (i/maxRunsPerBatch)+1, err)
+			}
+			allResults = append(allResults, results...)
+			fmt.Printf("Batch completed: %d results (total so far: %d)\n", len(results), len(allResults))
+		}
 	}
 	
 	fmt.Printf("Fetched %d total results in %v\n", len(allResults), time.Since(startTime))
-	
+
 	if len(allResults) == 0 {
 		fmt.Println("No results found for the specified runs. Nothing to migrate.")
 		return
 	}
-	
+
 	// Group results by run ID
 	resultsByRun := make(map[int][]qase.Result)
 	for _, result := range allResults {
 		resultsByRun[result.RunID] = append(resultsByRun[result.RunID], result)
 	}
-	
+
 	fmt.Printf("Grouped results into %d runs\n", len(resultsByRun))
 
 	// Process each run that has results

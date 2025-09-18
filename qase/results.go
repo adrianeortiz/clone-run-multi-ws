@@ -105,7 +105,7 @@ func GetResultsAfterDate(c *api.Client, project string, afterDate time.Time) ([]
 
 	for {
 		// Build URL with pagination and date filter using offset instead of page
-		u := fmt.Sprintf("/result/%s?limit=%d&offset=%d&created_after=%s", 
+		u := fmt.Sprintf("/result/%s?limit=%d&offset=%d&created_after=%s",
 			project, limit, offset, afterDate.Format("2006-01-02T15:04:05Z"))
 
 		req, err := c.NewRequest("GET", u, nil)
@@ -166,21 +166,29 @@ func GetResultsForRuns(c *api.Client, project string, runIDs []int) ([]Result, e
 	}
 	runIDFilter := strings.Join(runIDParams, "&")
 
+	pageCount := 0
 	for {
+		pageCount++
 		// Build URL with pagination and run ID filters
 		u := fmt.Sprintf("/result/%s?limit=%d&offset=%d&%s", 
 			project, limit, offset, runIDFilter)
+
+		fmt.Printf("API Call %d: %s\n", pageCount, u)
 
 		req, err := c.NewRequest("GET", u, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create request: %w", err)
 		}
 
+		start := time.Now()
 		resp, err := c.HTTP.Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("failed to make request: %w", err)
 		}
 		defer resp.Body.Close()
+
+		apiDuration := time.Since(start)
+		fmt.Printf("API call %d completed in %v\n", pageCount, apiDuration)
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -200,16 +208,21 @@ func GetResultsForRuns(c *api.Client, project string, runIDs []int) ([]Result, e
 		// Add results to slice
 		allResults = append(allResults, response.Result.Entities...)
 
-		fmt.Printf("Fetched offset %d: %d results (total so far: %d)\n", offset, len(response.Result.Entities), len(allResults))
+		fmt.Printf("Page %d: %d results (total: %d) - API took %v\n", 
+			pageCount, len(response.Result.Entities), len(allResults), apiDuration)
 
 		// Check if we've fetched all results
 		if len(response.Result.Entities) < limit {
+			fmt.Printf("Reached end of results (got %d < limit %d)\n", len(response.Result.Entities), limit)
 			break
 		}
 
 		offset += limit
+		
+		// Add a small delay to avoid rate limiting
+		time.Sleep(100 * time.Millisecond)
 	}
 
-	fmt.Printf("Total results fetched for %d runs: %d\n", len(runIDs), len(allResults))
+	fmt.Printf("Total results fetched for %d runs: %d (in %d API calls)\n", len(runIDs), len(allResults), pageCount)
 	return allResults, nil
 }
