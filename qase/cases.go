@@ -34,12 +34,15 @@ type CaseListResponse struct {
 // GetCases fetches all cases for a project with pagination
 func GetCases(c *api.Client, project string) (map[int]Case, error) {
 	cases := make(map[int]Case)
-	page := 1
+	offset := 0
 	limit := 100
+	maxPages := 1000 // Safety limit to prevent infinite loops
 
-	for {
-		// Build URL with pagination
-		u := fmt.Sprintf("/case/%s?limit=%d&page=%d", project, limit, page)
+	fmt.Printf("Fetching cases for project %s...\n", project)
+
+	for page := 1; page <= maxPages; page++ {
+		// Build URL with offset-based pagination
+		u := fmt.Sprintf("/case/%s?limit=%d&offset=%d", project, limit, offset)
 
 		req, err := c.NewRequest("GET", u, nil)
 		if err != nil {
@@ -67,21 +70,37 @@ func GetCases(c *api.Client, project string) (map[int]Case, error) {
 			return nil, fmt.Errorf("failed to parse response: %w", err)
 		}
 
-		// Add cases to map
+		// Check if we got any new cases
+		newCasesCount := 0
 		for _, case_ := range response.Result.Entities {
-			cases[case_.ID] = case_
+			if _, exists := cases[case_.ID]; !exists {
+				cases[case_.ID] = case_
+				newCasesCount++
+			}
 		}
 
-		fmt.Printf("Fetched page %d: %d cases (total so far: %d)\n", page, len(response.Result.Entities), len(cases))
+		fmt.Printf("Page %d (offset %d): %d cases returned, %d new cases (total unique: %d)\n", 
+			page, offset, len(response.Result.Entities), newCasesCount, len(cases))
 
 		// Check if we've fetched all cases
 		if len(response.Result.Entities) < limit {
+			fmt.Printf("Reached end of cases (got %d < limit %d)\n", len(response.Result.Entities), limit)
 			break
 		}
 
-		page++
+		// Safety check: if we got no new cases, we might be in a loop
+		if newCasesCount == 0 {
+			fmt.Printf("Warning: No new cases found on page %d, stopping to prevent infinite loop\n", page)
+			break
+		}
+
+		offset += limit
 	}
 
-	fmt.Printf("Total cases fetched: %d\n", len(cases))
+	if len(cases) == 0 {
+		return nil, fmt.Errorf("no cases found for project %s", project)
+	}
+
+	fmt.Printf("Total unique cases fetched: %d\n", len(cases))
 	return cases, nil
 }

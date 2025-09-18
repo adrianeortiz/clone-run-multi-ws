@@ -107,7 +107,7 @@ func GetResultsAfterDate(c *api.Client, project string, afterDate time.Time) ([]
 	for {
 		pageCount++
 		// Build URL with pagination and date filter using offset instead of page
-		u := fmt.Sprintf("/result/%s?limit=%d&offset=%d&created_after=%s", 
+		u := fmt.Sprintf("/result/%s?limit=%d&offset=%d&created_after=%s",
 			project, limit, offset, afterDate.Format("2006-01-02T15:04:05Z"))
 
 		fmt.Printf("API Call %d: %s\n", pageCount, u)
@@ -145,7 +145,7 @@ func GetResultsAfterDate(c *api.Client, project string, afterDate time.Time) ([]
 		// Add results to slice
 		allResults = append(allResults, response.Result.Entities...)
 
-		fmt.Printf("Page %d: %d results (total: %d) - API took %v\n", 
+		fmt.Printf("Page %d: %d results (total: %d) - API took %v\n",
 			pageCount, len(response.Result.Entities), len(allResults), apiDuration)
 
 		// Check if we've fetched all results
@@ -155,7 +155,7 @@ func GetResultsAfterDate(c *api.Client, project string, afterDate time.Time) ([]
 		}
 
 		offset += limit
-		
+
 		// Add a small delay to avoid rate limiting
 		time.Sleep(200 * time.Millisecond)
 	}

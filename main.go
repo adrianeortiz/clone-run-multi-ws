@@ -101,15 +101,15 @@ func main() {
 
 	// SIMPLIFIED APPROACH: Use the date-based results API directly
 	fmt.Printf("Using simplified date-based approach - fetching results directly after %s...\n", config.AfterDate.Format("2006-01-02"))
-	
+
 	startTime := time.Now()
-	
+
 	// Fetch all results after the date directly - this should be much faster
 	allResults, err := qase.GetResultsAfterDate(srcClient, config.SourceProject, config.AfterDate)
 	if err != nil {
 		log.Fatalf("Failed to fetch results: %v", err)
 	}
-	
+
 	fmt.Printf("Fetched %d total results in %v\n", len(allResults), time.Since(startTime))
 
 	if len(allResults) == 0 {
@@ -129,7 +129,7 @@ func main() {
 	timeout := 30 * time.Minute
 	timeoutTimer := time.NewTimer(timeout)
 	defer timeoutTimer.Stop()
-	
+
 	// Process each run that has results
 	totalResults := 0
 	totalSkipped := 0
@@ -239,7 +239,7 @@ func main() {
 				failedRuns++
 			}
 			fmt.Printf("Completed %d/%d runs\n", completed, len(resultsByRun))
-			
+
 		case <-timeoutTimer.C:
 			fmt.Printf("TIMEOUT: Migration exceeded %v limit. Completed %d/%d runs\n", timeout, completed, len(resultsByRun))
 			break

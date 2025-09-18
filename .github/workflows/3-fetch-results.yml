@@ -1,0 +1,46 @@
+name: "Step 3: Fetch Test Results"
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_project:
+        description: 'Source project code'
+        required: true
+        default: 'INTEGRATIO'
+      after_date:
+        description: 'Date to filter results after (ISO format)'
+        required: true
+        default: '2025-08-18T00:00:00Z'
+
+jobs:
+  fetch-results:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        
+    - name: Build results fetcher
+      run: go build -o fetch-results ./cmd/fetch-results
+      
+    - name: Fetch test results
+      env:
+        QASE_SOURCE_API_TOKEN: ${{ secrets.QASE_SOURCE_API_TOKEN }}
+        QASE_SOURCE_PROJECT: ${{ inputs.source_project }}
+        QASE_AFTER_DATE: ${{ inputs.after_date }}
+      run: |
+        echo "=== Fetching Test Results ==="
+        ./fetch-results
+        
+    - name: Upload results data
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: results-data.json
+        retention-days: 30
