@@ -10,6 +10,7 @@ import (
 	"github.com/adrianeortiz/clone-run-multi-ws/api"
 	"github.com/adrianeortiz/clone-run-multi-ws/mapping"
 	"github.com/adrianeortiz/clone-run-multi-ws/qase"
+	"github.com/adrianeortiz/clone-run-multi-ws/utils"
 )
 
 type MigrationResults struct {
@@ -327,11 +328,18 @@ func loadConfig() Config {
 		log.Fatal("QASE_TARGET_PROJECT is required")
 	}
 
-	// Parse after date
-	afterDateStr := getEnv("QASE_AFTER_DATE", "2025-08-18T00:00:00Z")
-	afterDate, err := time.Parse(time.RFC3339, afterDateStr)
-	if err != nil {
-		log.Fatalf("Invalid QASE_AFTER_DATE format: %v", err)
+	// Parse after date - try Unix timestamp first, then date string
+	afterDateStr := getEnv("QASE_AFTER_DATE", "1755475200") // Default to Aug 18, 2025 Unix timestamp
+	
+	var afterDate time.Time
+	var err error
+	
+	// Try Unix timestamp first (much faster and more reliable)
+	if afterDate, err = utils.ParseUnixTimestamp(afterDateStr); err != nil {
+		// Fallback to date string parsing
+		if afterDate, err = utils.ParseDateFlexible(afterDateStr); err != nil {
+			log.Fatalf("Invalid QASE_AFTER_DATE format '%s': %v", afterDateStr, err)
+		}
 	}
 	config.AfterDate = afterDate
 

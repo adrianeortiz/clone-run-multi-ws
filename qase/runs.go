@@ -52,7 +52,12 @@ func GetRuns(c *api.Client, project string, afterDate time.Time) ([]Run, error) 
 	limit := 100
 	maxPages := 1000 // Safety limit to prevent infinite loops
 
-	fmt.Printf("Fetching runs for project %s after %s...\n", project, afterDate.Format("2006-01-02"))
+	fmt.Printf("Fetching runs for project %s after %s...\n", project, afterDate.Format("2006-01-02 15:04:05"))
+
+	// Debug: Check if afterDate is zero time
+	if afterDate.IsZero() {
+		fmt.Printf("WARNING: afterDate is zero time! This will fetch ALL runs.\n")
+	}
 
 	for page := 1; page <= maxPages; page++ {
 		// Build URL with pagination
