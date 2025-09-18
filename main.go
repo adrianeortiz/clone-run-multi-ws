@@ -99,16 +99,41 @@ func main() {
 		log.Printf("Warning: Failed to write mapping artifact: %v", err)
 	}
 
-	// Process runs concurrently
+	// OPTIMIZED APPROACH: Fetch all results at once instead of per-run
+	fmt.Printf("Using optimized bulk approach - fetching all results after %s...\n", config.AfterDate.Format("2006-01-02"))
+	
+	startTime := time.Now()
+	
+	// Fetch all results after the date in one go
+	allResults, err := qase.GetResultsAfterDate(srcClient, config.SourceProject, config.AfterDate)
+	if err != nil {
+		log.Fatalf("Failed to fetch results: %v", err)
+	}
+	
+	fmt.Printf("Fetched %d total results in %v\n", len(allResults), time.Since(startTime))
+	
+	if len(allResults) == 0 {
+		fmt.Println("No results found after the specified date. Nothing to migrate.")
+		return
+	}
+	
+	// Group results by run ID
+	resultsByRun := make(map[int][]qase.Result)
+	for _, result := range allResults {
+		resultsByRun[result.RunID] = append(resultsByRun[result.RunID], result)
+	}
+	
+	fmt.Printf("Grouped results into %d runs\n", len(resultsByRun))
+	
+	// Process each run that has results
 	totalResults := 0
 	totalSkipped := 0
 	successfulRuns := 0
 	failedRuns := 0
-	startTime := time.Now()
-
+	
 	// Create channels for coordination
 	type runResult struct {
-		runIndex    int
+		runID       int
 		results     int
 		skipped     int
 		success     bool
@@ -116,59 +141,64 @@ func main() {
 		runDuration time.Duration
 	}
 
-	resultsChan := make(chan runResult, len(srcRuns))
+	resultsChan := make(chan runResult, len(resultsByRun))
 	semaphore := make(chan struct{}, config.Concurrency)
 
-	fmt.Printf("Processing %d runs with concurrency limit of %d\n", len(srcRuns), config.Concurrency)
+	fmt.Printf("Processing %d runs with results (concurrency: %d)\n", len(resultsByRun), config.Concurrency)
 
-	// Launch goroutines for each run
-	for i, srcRun := range srcRuns {
-		go func(runIndex int, run qase.Run) {
+	// Launch goroutines for each run that has results
+	runIndex := 0
+	for runID, results := range resultsByRun {
+		go func(runID int, results []qase.Result, index int) {
 			// Acquire semaphore
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 
 			runStartTime := time.Now()
-			fmt.Printf("\n--- Processing run %d/%d: %s (ID: %d) ---\n",
-				runIndex+1, len(srcRuns), run.Title, run.ID)
+			fmt.Printf("\n--- Processing run %d/%d: ID %d with %d results ---\n",
+				index+1, len(resultsByRun), runID, len(results))
 
-			// Fetch results for this run
-			fmt.Printf("Fetching results from run %d...\n", run.ID)
-			results, err := qase.GetRunResults(srcClient, config.SourceProject, run.ID)
-			if err != nil {
-				log.Printf("Failed to fetch results for run %d: %v", run.ID, err)
-				resultsChan <- runResult{runIndex: runIndex, success: false, error: err, runDuration: time.Since(runStartTime)}
-				return
+			// Find the source run details
+			var srcRun *qase.Run
+			for _, run := range srcRuns {
+				if run.ID == runID {
+					srcRun = &run
+					break
+				}
 			}
-
-			if len(results) == 0 {
-				fmt.Printf("No results found in run %d, skipping\n", run.ID)
-				resultsChan <- runResult{runIndex: runIndex, success: true, runDuration: time.Since(runStartTime)}
-				return
+			
+			if srcRun == nil {
+				fmt.Printf("Warning: Could not find run details for run ID %d\n", runID)
+				// Use a default title
+				srcRun = &qase.Run{
+					ID:          runID,
+					Title:       fmt.Sprintf("Run %d", runID),
+					Description: "Migrated run",
+				}
 			}
 
 			// Transform results to target case IDs
-			fmt.Println("Transforming results...")
+			fmt.Printf("Transforming %d results...\n", len(results))
 			bulkItems, skipped := transformResults(results, caseMapping, config.StatusMap)
 
 			fmt.Printf("Prepared %d results for posting, skipped %d unmapped results\n", len(bulkItems), skipped)
 
 			// Handle dry run mode
 			if config.DryRun {
-				fmt.Printf("DRY RUN MODE - Would create run '%s' with %d results\n", run.Title, len(bulkItems))
+				fmt.Printf("DRY RUN MODE - Would create run '%s' with %d results\n", srcRun.Title, len(bulkItems))
 				resultsChan <- runResult{
-					runIndex: runIndex, success: true, results: len(bulkItems), skipped: skipped,
+					runID: runID, success: true, results: len(bulkItems), skipped: skipped,
 					runDuration: time.Since(runStartTime),
 				}
 				return
 			}
 
 			// Create target run
-			fmt.Printf("Creating target run: %s\n", run.Title)
-			tgtRun, err := qase.CreateRun(tgtClient, config.TargetProject, run.Title, run.Description)
+			fmt.Printf("Creating target run: %s\n", srcRun.Title)
+			tgtRun, err := qase.CreateRun(tgtClient, config.TargetProject, srcRun.Title, srcRun.Description)
 			if err != nil {
-				log.Printf("Failed to create target run for %s: %v", run.Title, err)
-				resultsChan <- runResult{runIndex: runIndex, success: false, error: err, runDuration: time.Since(runStartTime)}
+				log.Printf("Failed to create target run for %s: %v", srcRun.Title, err)
+				resultsChan <- runResult{runID: runID, success: false, error: err, runDuration: time.Since(runStartTime)}
 				return
 			}
 
@@ -176,21 +206,22 @@ func main() {
 			fmt.Printf("Posting %d results to target run %d...\n", len(bulkItems), tgtRun.ID)
 			if err := qase.PostBulkResults(tgtClient, config.TargetProject, tgtRun.ID, bulkItems, config.BulkSize); err != nil {
 				log.Printf("Failed to post results to run %d: %v", tgtRun.ID, err)
-				resultsChan <- runResult{runIndex: runIndex, success: false, error: err, runDuration: time.Since(runStartTime)}
+				resultsChan <- runResult{runID: runID, success: false, error: err, runDuration: time.Since(runStartTime)}
 				return
 			}
 
 			runDuration := time.Since(runStartTime)
-			fmt.Printf("Successfully migrated run %d -> %d (took %v)\n", run.ID, tgtRun.ID, runDuration)
+			fmt.Printf("Successfully migrated run %d -> %d (took %v)\n", runID, tgtRun.ID, runDuration)
 			resultsChan <- runResult{
-				runIndex: runIndex, success: true, results: len(bulkItems), skipped: skipped,
+				runID: runID, success: true, results: len(bulkItems), skipped: skipped,
 				runDuration: runDuration,
 			}
-		}(i, srcRun)
+		}(runID, results, runIndex)
+		runIndex++
 	}
 
 	// Collect results
-	for i := 0; i < len(srcRuns); i++ {
+	for i := 0; i < len(resultsByRun); i++ {
 		result := <-resultsChan
 		if result.success {
 			successfulRuns++
@@ -205,7 +236,7 @@ func main() {
 
 	// Print summary
 	fmt.Printf("\n=== Migration Summary ===\n")
-	fmt.Printf("Total runs processed: %d\n", len(srcRuns))
+	fmt.Printf("Total runs with results: %d\n", len(resultsByRun))
 	fmt.Printf("Successful migrations: %d\n", successfulRuns)
 	fmt.Printf("Failed migrations: %d\n", failedRuns)
 	fmt.Printf("Total results migrated: %d\n", totalResults)
