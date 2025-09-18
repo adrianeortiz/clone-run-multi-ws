@@ -99,13 +99,21 @@ func main() {
 		log.Printf("Warning: Failed to write mapping artifact: %v", err)
 	}
 
-	// OPTIMIZED APPROACH: Fetch all results at once instead of per-run
-	fmt.Printf("Using optimized bulk approach - fetching all results after %s...\n", config.AfterDate.Format("2006-01-02"))
+	// ULTRA-OPTIMIZED APPROACH: Fetch runs first, then results for those runs
+	fmt.Printf("Using ultra-optimized approach - fetching runs and results efficiently...\n")
 	
 	startTime := time.Now()
 	
-	// Fetch all results after the date in one go
-	allResults, err := qase.GetResultsAfterDate(srcClient, config.SourceProject, config.AfterDate)
+	// Extract run IDs from the runs we found
+	runIDs := make([]int, 0, len(srcRuns))
+	for _, run := range srcRuns {
+		runIDs = append(runIDs, run.ID)
+	}
+	
+	fmt.Printf("Fetching results for %d specific runs...\n", len(runIDs))
+	
+	// Fetch results for the specific runs we found
+	allResults, err := qase.GetResultsForRuns(srcClient, config.SourceProject, runIDs)
 	if err != nil {
 		log.Fatalf("Failed to fetch results: %v", err)
 	}
@@ -113,7 +121,7 @@ func main() {
 	fmt.Printf("Fetched %d total results in %v\n", len(allResults), time.Since(startTime))
 	
 	if len(allResults) == 0 {
-		fmt.Println("No results found after the specified date. Nothing to migrate.")
+		fmt.Println("No results found for the specified runs. Nothing to migrate.")
 		return
 	}
 	
@@ -124,13 +132,13 @@ func main() {
 	}
 	
 	fmt.Printf("Grouped results into %d runs\n", len(resultsByRun))
-	
+
 	// Process each run that has results
 	totalResults := 0
 	totalSkipped := 0
 	successfulRuns := 0
 	failedRuns := 0
-	
+
 	// Create channels for coordination
 	type runResult struct {
 		runID       int
@@ -166,7 +174,7 @@ func main() {
 					break
 				}
 			}
-			
+
 			if srcRun == nil {
 				fmt.Printf("Warning: Could not find run details for run ID %d\n", runID)
 				// Use a default title
