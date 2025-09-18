@@ -79,7 +79,7 @@ func GetCases(c *api.Client, project string) (map[int]Case, error) {
 			}
 		}
 
-		fmt.Printf("Page %d (offset %d): %d cases returned, %d new cases (total unique: %d)\n", 
+		fmt.Printf("Page %d (offset %d): %d cases returned, %d new cases (total unique: %d)\n",
 			page, offset, len(response.Result.Entities), newCasesCount, len(cases))
 
 		// Check if we've fetched all cases

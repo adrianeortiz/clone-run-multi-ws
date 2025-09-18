@@ -17,7 +17,7 @@ type ResultsData struct {
 	FetchTime     time.Time     `json:"fetch_time"`
 	TotalResults  int           `json:"total_results"`
 	Results       []qase.Result `json:"results"`
-	
+
 	// Grouped by run for easier processing
 	ResultsByRun map[int][]qase.Result `json:"results_by_run"`
 }
@@ -25,34 +25,34 @@ type ResultsData struct {
 func main() {
 	// Load configuration
 	config := loadConfig()
-	
+
 	fmt.Printf("=== Fetch Test Results ===\n")
 	fmt.Printf("Source Project: %s\n", config.SourceProject)
 	fmt.Printf("After Date: %s\n", config.AfterDate.Format("2006-01-02"))
-	
+
 	// Create API client
 	srcClient := api.NewClient(config.SourceBaseURL, config.SourceToken)
-	
+
 	// Fetch results after the specified date
 	fmt.Printf("\nFetching results after %s...\n", config.AfterDate.Format("2006-01-02"))
 	startTime := time.Now()
-	
+
 	results, err := qase.GetResultsAfterDate(srcClient, config.SourceProject, config.AfterDate)
 	if err != nil {
 		log.Fatalf("Failed to fetch results: %v", err)
 	}
-	
+
 	fetchDuration := time.Since(startTime)
 	fmt.Printf("Fetched %d results in %v\n", len(results), fetchDuration)
-	
+
 	// Group results by run ID
 	resultsByRun := make(map[int][]qase.Result)
 	for _, result := range results {
 		resultsByRun[result.RunID] = append(resultsByRun[result.RunID], result)
 	}
-	
+
 	fmt.Printf("Grouped into %d runs\n", len(resultsByRun))
-	
+
 	// Create results data structure
 	resultsData := ResultsData{
 		SourceProject: config.SourceProject,
@@ -62,26 +62,26 @@ func main() {
 		Results:       results,
 		ResultsByRun:  resultsByRun,
 	}
-	
+
 	// Save results data
 	resultsDataJSON, err := json.MarshalIndent(resultsData, "", "  ")
 	if err != nil {
 		log.Fatalf("Failed to marshal results data: %v", err)
 	}
-	
+
 	if err := os.WriteFile("results-data.json", resultsDataJSON, 0644); err != nil {
 		log.Fatalf("Failed to write results data: %v", err)
 	}
-	
+
 	fmt.Printf("\n=== Fetch Complete ===\n")
 	fmt.Printf("Results data saved to: results-data.json\n")
-	
+
 	// Print summary
 	fmt.Printf("\n--- Summary ---\n")
 	fmt.Printf("Total results found: %d\n", len(results))
 	fmt.Printf("Runs with results: %d\n", len(resultsByRun))
 	fmt.Printf("Fetch time: %v\n", fetchDuration)
-	
+
 	// Show results distribution by run
 	if len(resultsByRun) > 0 {
 		fmt.Printf("\n--- Results by Run ---\n")
@@ -110,14 +110,14 @@ func loadConfig() Config {
 		SourceBaseURL: getEnv("QASE_SOURCE_API_BASE", "https://api.qase.io"),
 		SourceProject: getEnv("QASE_SOURCE_PROJECT", ""),
 	}
-	
+
 	if config.SourceToken == "" {
 		log.Fatal("QASE_SOURCE_API_TOKEN is required")
 	}
 	if config.SourceProject == "" {
 		log.Fatal("QASE_SOURCE_PROJECT is required")
 	}
-	
+
 	// Parse after date
 	afterDateStr := getEnv("QASE_AFTER_DATE", "2025-08-18T00:00:00Z")
 	afterDate, err := time.Parse(time.RFC3339, afterDateStr)
@@ -125,7 +125,7 @@ func loadConfig() Config {
 		log.Fatalf("Invalid QASE_AFTER_DATE format: %v", err)
 	}
 	config.AfterDate = afterDate
-	
+
 	return config
 }
 

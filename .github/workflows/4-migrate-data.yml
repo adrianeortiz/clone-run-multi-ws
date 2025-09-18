@@ -43,17 +43,8 @@ jobs:
       with:
         go-version: '1.21'
         
-    - name: Download previous artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: test-runs
-        path: ./data/
-        
-    - name: Download results data
-      uses: actions/download-artifact@v4
-      with:
-        name: test-results
-        path: ./data/
+    # Note: This step fetches data directly instead of using artifacts
+    # to avoid cross-workflow artifact dependencies
         
     - name: Build migrator
       run: go build -o migrate-data ./cmd/migrate-data
