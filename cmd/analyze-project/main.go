@@ -9,6 +9,7 @@ import (
 
 	"github.com/adrianeortiz/clone-run-multi-ws/api"
 	"github.com/adrianeortiz/clone-run-multi-ws/qase"
+	"github.com/adrianeortiz/clone-run-multi-ws/utils"
 )
 
 type ProjectAnalysis struct {
@@ -67,32 +68,39 @@ func main() {
 	analysis.SourceStats.TotalCases = len(cases)
 	fmt.Printf("Total cases: %d\n", analysis.SourceStats.TotalCases)
 	
-	// Get total runs count
-	fmt.Printf("Counting test runs...\n")
-	runs, err := qase.GetRuns(srcClient, config.SourceProject, time.Time{}) // Get all runs
+	// Get total results count (we'll estimate runs from results)
+	fmt.Printf("Counting test results...\n")
+	allResults, err := qase.GetResultsAfterDate(srcClient, config.SourceProject, time.Time{}) // Get all results
 	if err != nil {
-		log.Fatalf("Failed to fetch runs: %v", err)
+		log.Fatalf("Failed to fetch all results: %v", err)
 	}
-	analysis.SourceStats.TotalRuns = len(runs)
-	fmt.Printf("Total runs: %d\n", analysis.SourceStats.TotalRuns)
+	analysis.SourceStats.TotalResults = len(allResults)
+	fmt.Printf("Total results: %d\n", analysis.SourceStats.TotalResults)
 	
-	// Get filtered runs (after date)
-	fmt.Printf("Counting runs after %s...\n", config.AfterDate.Format("2006-01-02"))
-	filteredRuns, err := qase.GetRuns(srcClient, config.SourceProject, config.AfterDate)
-	if err != nil {
-		log.Fatalf("Failed to fetch filtered runs: %v", err)
+	// Count unique runs from all results
+	runSet := make(map[int]bool)
+	for _, result := range allResults {
+		runSet[result.RunID] = true
 	}
-	analysis.FilteredRuns = len(filteredRuns)
-	fmt.Printf("Filtered runs: %d\n", analysis.FilteredRuns)
+	analysis.SourceStats.TotalRuns = len(runSet)
+	fmt.Printf("Total runs (estimated from results): %d\n", analysis.SourceStats.TotalRuns)
 	
-	// Get filtered results count
+	// Get filtered results (after date)
 	fmt.Printf("Counting results after %s...\n", config.AfterDate.Format("2006-01-02"))
-	results, err := qase.GetResultsAfterDate(srcClient, config.SourceProject, config.AfterDate)
+	filteredResults, err := qase.GetResultsAfterDate(srcClient, config.SourceProject, config.AfterDate)
 	if err != nil {
 		log.Fatalf("Failed to fetch filtered results: %v", err)
 	}
-	analysis.FilteredResults = len(results)
+	analysis.FilteredResults = len(filteredResults)
 	fmt.Printf("Filtered results: %d\n", analysis.FilteredResults)
+	
+	// Count unique runs from filtered results
+	filteredRunSet := make(map[int]bool)
+	for _, result := range filteredResults {
+		filteredRunSet[result.RunID] = true
+	}
+	analysis.FilteredRuns = len(filteredRunSet)
+	fmt.Printf("Filtered runs (estimated from results): %d\n", analysis.FilteredRuns)
 	
 	// Generate recommendations
 	analysis.Recommendations = generateRecommendations(analysis)
@@ -147,7 +155,7 @@ func generateRecommendations(analysis ProjectAnalysis) []string {
 		recommendations = append(recommendations, "No runs found for the specified date - check date format and project data")
 	}
 	
-	recommendations = append(recommendations, "Consider running Step 2 (Fetch Runs) before Step 3 (Fetch Results)")
+	recommendations = append(recommendations, "Consider running Step 2 (Fetch Results) before Step 3 (Migrate Data)")
 	recommendations = append(recommendations, "Use dry run mode first to validate the migration approach")
 	
 	return recommendations
@@ -179,11 +187,11 @@ func loadConfig() Config {
 		log.Fatal("QASE_TARGET_PROJECT is required")
 	}
 	
-	// Parse after date
-	afterDateStr := getEnv("QASE_AFTER_DATE", "2025-08-18T00:00:00Z")
-	afterDate, err := time.Parse(time.RFC3339, afterDateStr)
+	// Parse after date (Unix timestamp)
+	afterDateStr := getEnv("QASE_AFTER_DATE", "1755500400")
+	afterDate, err := utils.ParseUnixTimestamp(afterDateStr)
 	if err != nil {
-		log.Fatalf("Invalid QASE_AFTER_DATE format: %v", err)
+		log.Fatalf("Invalid QASE_AFTER_DATE format (must be Unix timestamp): %v", err)
 	}
 	config.AfterDate = afterDate
 	
