@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -106,9 +107,9 @@ func GetResultsAfterDate(c *api.Client, project string, afterDate time.Time) ([]
 	pageCount := 0
 	for {
 		pageCount++
-		// Build URL with pagination and date filter using offset instead of page
-		u := fmt.Sprintf("/result/%s?limit=%d&offset=%d&created_after=%s",
-			project, limit, offset, afterDate.Format("2006-01-02T15:04:05Z"))
+		// Build URL with pagination and date filter using from_end_time parameter
+		u := fmt.Sprintf("/result/%s?limit=%d&offset=%d&from_end_time=%s",
+			project, limit, offset, url.QueryEscape(afterDate.Format("2006-01-02 00:00:00")))
 
 		fmt.Printf("API Call %d: %s\n", pageCount, u)
 
