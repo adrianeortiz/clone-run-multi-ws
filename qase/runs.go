@@ -139,3 +139,83 @@ func GetRunByID(c *api.Client, project string, runID int) (*Run, error) {
 
 	return &response.Result, nil
 }
+
+// RunListResponse represents the API response for run list
+type RunListResponse struct {
+	Status bool `json:"status"`
+	Result struct {
+		Total    int   `json:"total"`
+		Entities []Run `json:"entities"`
+	} `json:"result"`
+}
+
+// FindRunByTitle searches for a run with the given title in the target project
+func FindRunByTitle(c *api.Client, project string, title string) (*Run, error) {
+	offset := 0
+	limit := 100
+
+	for {
+		// Build URL with pagination
+		u := fmt.Sprintf("/run/%s?limit=%d&offset=%d", project, limit, offset)
+
+		req, err := c.NewRequest("GET", u, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+
+		resp, err := c.HTTP.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to make request: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read response: %w", err)
+		}
+
+		var response RunListResponse
+		if err := json.Unmarshal(body, &response); err != nil {
+			return nil, fmt.Errorf("failed to parse response: %w", err)
+		}
+
+		// Search for run with matching title
+		for _, run := range response.Result.Entities {
+			if run.Title == title {
+				return &run, nil
+			}
+		}
+
+		// Check if we've fetched all runs
+		if len(response.Result.Entities) < limit {
+			break
+		}
+
+		offset += limit
+	}
+
+	return nil, nil // Run not found
+}
+
+// CreateOrGetRun creates a new run or returns existing one if it already exists
+func CreateOrGetRun(c *api.Client, project string, title, description string) (*Run, error) {
+	// First, check if a run with this title already exists
+	existingRun, err := FindRunByTitle(c, project, title)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search for existing run: %w", err)
+	}
+
+	if existingRun != nil {
+		fmt.Printf("Found existing run: %s (ID: %d)\n", existingRun.Title, existingRun.ID)
+		return existingRun, nil
+	}
+
+	// Run doesn't exist, create it
+	fmt.Printf("Creating new run: %s\n", title)
+	return CreateRun(c, project, title, description)
+}

@@ -183,17 +183,62 @@ func main() {
 				return
 			}
 
-			// Create target run
-			fmt.Printf("Creating target run: %s\n", runTitle)
-			tgtRun, err := qase.CreateRun(tgtClient, config.TargetProject, runTitle, runDescription)
-			if err != nil {
-				log.Printf("Failed to create target run for %s: %v", runTitle, err)
-				resultsChan <- runResult{runID: runID, success: false, error: err, runDuration: time.Since(runStartTime)}
-				return
-			}
+			var tgtRun *qase.Run
+			var err error
 
-			// Post results to target run
-			fmt.Printf("Posting %d results to target run %d...\n", len(bulkItems), tgtRun.ID)
+			if config.Idempotent {
+				// Create or get existing target run (idempotent)
+				fmt.Printf("Creating or finding target run: %s\n", runTitle)
+				tgtRun, err = qase.CreateOrGetRun(tgtClient, config.TargetProject, runTitle, runDescription)
+				if err != nil {
+					log.Printf("Failed to create/get target run for %s: %v", runTitle, err)
+					resultsChan <- runResult{runID: runID, success: false, error: err, runDuration: time.Since(runStartTime)}
+					return
+				}
+
+				// Check if run already has results (idempotent)
+				hasResults, err := qase.CheckRunHasResults(tgtClient, config.TargetProject, tgtRun.ID)
+				if err != nil {
+					log.Printf("Failed to check existing results for run %d: %v", tgtRun.ID, err)
+					resultsChan <- runResult{runID: runID, success: false, error: err, runDuration: time.Since(runStartTime)}
+					return
+				}
+
+				if hasResults {
+					fmt.Printf("Run %d already has results, filtering for new ones only...\n", tgtRun.ID)
+					// Filter out results that already exist
+					bulkItems, err = qase.FilterNewResults(tgtClient, config.TargetProject, tgtRun.ID, bulkItems)
+					if err != nil {
+						log.Printf("Failed to filter existing results for run %d: %v", tgtRun.ID, err)
+						resultsChan <- runResult{runID: runID, success: false, error: err, runDuration: time.Since(runStartTime)}
+						return
+					}
+				}
+
+				if len(bulkItems) == 0 {
+					fmt.Printf("No new results to post for run %d (all already exist)\n", tgtRun.ID)
+					resultsChan <- runResult{
+						runID: runID, success: true, results: 0, skipped: skipped,
+						runDuration: time.Since(runStartTime),
+					}
+					return
+				}
+
+				// Post only new results to target run
+				fmt.Printf("Posting %d new results to target run %d...\n", len(bulkItems), tgtRun.ID)
+			} else {
+				// Non-idempotent mode: always create new runs
+				fmt.Printf("Creating target run: %s\n", runTitle)
+				tgtRun, err = qase.CreateRun(tgtClient, config.TargetProject, runTitle, runDescription)
+				if err != nil {
+					log.Printf("Failed to create target run for %s: %v", runTitle, err)
+					resultsChan <- runResult{runID: runID, success: false, error: err, runDuration: time.Since(runStartTime)}
+					return
+				}
+
+				// Post all results to target run
+				fmt.Printf("Posting %d results to target run %d...\n", len(bulkItems), tgtRun.ID)
+			}
 			if err := qase.PostBulkResults(tgtClient, config.TargetProject, tgtRun.ID, bulkItems, config.BulkSize); err != nil {
 				log.Printf("Failed to post results to run %d: %v", tgtRun.ID, err)
 				resultsChan <- runResult{runID: runID, success: false, error: err, runDuration: time.Since(runStartTime)}
@@ -274,6 +319,7 @@ type Config struct {
 	BulkSize    int
 	Concurrency int
 	StatusMap   map[string]string
+	Idempotent  bool
 }
 
 // loadConfig loads configuration from environment variables
@@ -285,6 +331,7 @@ func loadConfig() (*Config, error) {
 		DryRun:        getEnvDefault("QASE_DRY_RUN", "true") == "true",
 		BulkSize:      getIntDefault("QASE_BULK_SIZE", 200),
 		Concurrency:   getIntDefault("QASE_CONCURRENCY", 2),
+		Idempotent:    getEnvDefault("QASE_IDEMPOTENT", "true") == "true",
 	}
 
 	// Required environment variables

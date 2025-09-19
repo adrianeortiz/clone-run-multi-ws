@@ -240,3 +240,40 @@ func GetResultsForRuns(c *api.Client, project string, runIDs []int) ([]Result, e
 	fmt.Printf("Total results fetched for %d runs: %d (in %d API calls)\n", len(runIDs), len(allResults), pageCount)
 	return allResults, nil
 }
+
+// CheckRunHasResults checks if a run already has results (to avoid duplicate posting)
+func CheckRunHasResults(c *api.Client, project string, runID int) (bool, error) {
+	// Get results for this specific run
+	results, err := GetRunResults(c, project, runID)
+	if err != nil {
+		return false, fmt.Errorf("failed to check existing results: %w", err)
+	}
+	
+	return len(results) > 0, nil
+}
+
+// FilterNewResults filters out results that already exist in the target run
+func FilterNewResults(c *api.Client, project string, runID int, newResults []BulkItem) ([]BulkItem, error) {
+	// Get existing results for this run
+	existingResults, err := GetRunResults(c, project, runID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get existing results: %w", err)
+	}
+	
+	// Create a map of existing case IDs for quick lookup
+	existingCaseIDs := make(map[int]bool)
+	for _, result := range existingResults {
+		existingCaseIDs[result.CaseID] = true
+	}
+	
+	// Filter out results that already exist
+	var filteredResults []BulkItem
+	for _, result := range newResults {
+		if !existingCaseIDs[result.CaseID] {
+			filteredResults = append(filteredResults, result)
+		}
+	}
+	
+	fmt.Printf("Filtered results: %d new, %d already exist\n", len(filteredResults), len(newResults)-len(filteredResults))
+	return filteredResults, nil
+}

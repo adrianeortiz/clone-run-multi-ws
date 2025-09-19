@@ -13,6 +13,7 @@ This tool migrates test execution results from a Qase project in Workspace A (To
 - **Bulk posting** with chunking and retries
 - **Dry-run mode** for testing
 - **Status translation** support
+- **Idempotent operation** - safe to re-run without creating duplicates
 - **Environment-driven configuration**
 - **Clear logging** (no secrets in logs)
 - **Concurrent processing** for faster migration
@@ -37,6 +38,7 @@ This tool migrates test execution results from a Qase project in Workspace A (To
 - `QASE_DRY_RUN` - Dry run mode: `true` or `false` (default: true)
 - `QASE_BULK_SIZE` - Bulk posting chunk size (default: 200)
 - `QASE_STATUS_MAP` - Status translation mapping (e.g., "passed:passed,failed:failed")
+- `QASE_IDEMPOTENT` - Idempotent mode: `true` or `false` (default: true)
 
 ## Usage
 
@@ -125,8 +127,21 @@ The code is organized into packages:
 1. **Fetch Results**: Uses the Results API to get all test execution results after the specified date
 2. **Group by Run**: Groups results by their original run ID to recreate run structure
 3. **Map Cases**: Maps source case IDs to target case IDs using custom field or CSV mapping
-4. **Create Runs**: Creates new runs in the target workspace with meaningful titles
-5. **Post Results**: Bulk posts the mapped results to the target runs
+4. **Create/Find Runs**: Creates new runs or finds existing ones in the target workspace (idempotent)
+5. **Filter Results**: Filters out results that already exist in the target run (idempotent)
+6. **Post Results**: Bulk posts only the new mapped results to the target runs
+
+### Idempotent Behavior
+
+When `QASE_IDEMPOTENT=true` (default):
+- **Run Deduplication**: Checks if a run with the same title already exists before creating
+- **Result Filtering**: Only posts results that don't already exist in the target run
+- **Safe Re-runs**: You can safely re-run the migration without creating duplicates
+- **Progress Tracking**: Shows how many results are new vs. already exist
+
+When `QASE_IDEMPOTENT=false`:
+- **Always Creates New Runs**: Creates new runs every time (legacy behavior)
+- **Posts All Results**: Posts all results without checking for duplicates
 
 ## Error Handling
 
