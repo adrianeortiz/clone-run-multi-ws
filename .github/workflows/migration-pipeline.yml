@@ -1,0 +1,158 @@
+name: "Qase Migration Pipeline"
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_project:
+        description: 'Source project code'
+        required: true
+        default: 'INTEGRATIO'
+      target_project:
+        description: 'Target project code'
+        required: true
+        default: 'INTEGRATIO'
+      after_date:
+        description: 'Date to filter runs after (Unix timestamp)'
+        required: true
+        default: '1755500400'
+      match_mode:
+        description: 'Case matching mode'
+        required: true
+        default: 'custom_field'
+        type: choice
+        options:
+        - custom_field
+        - csv
+      cf_id:
+        description: 'Custom field ID (for custom_field mode)'
+        required: false
+        default: '2'
+      dry_run:
+        description: 'Dry run mode'
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  # Step 1: Analyze Project Data
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      total_cases: ${{ steps.analyze.outputs.total_cases }}
+      total_runs: ${{ steps.analyze.outputs.total_runs }}
+      filtered_runs: ${{ steps.analyze.outputs.filtered_runs }}
+      filtered_results: ${{ steps.analyze.outputs.filtered_results }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        
+    - name: Build analyzer
+      run: go build -o analyze-project ./cmd/analyze-project
+      
+    - name: Run project analysis
+      id: analyze
+      env:
+        QASE_SOURCE_API_TOKEN: ${{ secrets.QASE_SOURCE_API_TOKEN }}
+        QASE_TARGET_API_TOKEN: ${{ secrets.QASE_TARGET_API_TOKEN }}
+        QASE_SOURCE_PROJECT: ${{ inputs.source_project }}
+        QASE_TARGET_PROJECT: ${{ inputs.target_project }}
+        QASE_AFTER_DATE: ${{ inputs.after_date }}
+      run: |
+        echo "=== Project Analysis ==="
+        ./analyze-project
+        
+    - name: Upload analysis results
+      uses: actions/upload-artifact@v4
+      with:
+        name: project-analysis
+        path: analysis-results.json
+        retention-days: 30
+
+  # Step 2: Fetch Test Results (using results API directly)
+  fetch-results:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: analyze
+    outputs:
+      results_data: ${{ steps.fetch.outputs.results_data }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        
+    - name: Build results fetcher
+      run: go build -o fetch-results ./cmd/fetch-results
+      
+    - name: Fetch test results
+      id: fetch
+      env:
+        QASE_SOURCE_API_TOKEN: ${{ secrets.QASE_SOURCE_API_TOKEN }}
+        QASE_SOURCE_PROJECT: ${{ inputs.source_project }}
+        QASE_AFTER_DATE: ${{ inputs.after_date }}
+      run: |
+        echo "=== Fetching Test Results (Results API) ==="
+        ./fetch-results
+        
+    - name: Upload results data
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: results-data.json
+        retention-days: 30
+
+  # Step 3: Migrate Data
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: [analyze, fetch-results]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        
+    - name: Download results data
+      uses: actions/download-artifact@v4
+      with:
+        name: test-results
+        path: ./data/
+        
+    - name: Build migrator
+      run: go build -o migrate-data ./cmd/migrate-data
+      
+    - name: Run migration
+      env:
+        QASE_SOURCE_API_TOKEN: ${{ secrets.QASE_SOURCE_API_TOKEN }}
+        QASE_TARGET_API_TOKEN: ${{ secrets.QASE_TARGET_API_TOKEN }}
+        QASE_SOURCE_PROJECT: ${{ inputs.source_project }}
+        QASE_TARGET_PROJECT: ${{ inputs.target_project }}
+        QASE_AFTER_DATE: ${{ inputs.after_date }}
+        QASE_MATCH_MODE: ${{ inputs.match_mode }}
+        QASE_CF_ID: ${{ inputs.cf_id }}
+        QASE_DRY_RUN: ${{ inputs.dry_run }}
+      run: |
+        echo "=== Migrating Data ==="
+        ./migrate-data
+        
+    - name: Upload migration results
+      uses: actions/upload-artifact@v4
+      with:
+        name: migration-results
+        path: migration-results.json
+        retention-days: 30

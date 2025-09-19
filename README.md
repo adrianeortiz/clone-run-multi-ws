@@ -88,19 +88,32 @@ source_case_id,target_case_id
 
 ## GitHub Actions
 
-The included workflow (`.github/workflows/cross-workspace.yml`) provides a manual trigger with inputs for:
-- Date filtering (runs after specified date)
-- Mapping mode selection
-- Custom field ID
+### Multi-Step Migration Pipeline
+
+The main workflow (`.github/workflows/migration-pipeline.yml`) provides a comprehensive 3-step migration process:
+
+1. **Analyze Project Data** - Analyzes source and target projects
+2. **Fetch Test Results** - Uses Results API to fetch all test execution data
+3. **Migrate Data** - Performs the actual migration with case mapping
+
+**Manual trigger inputs:**
+- Source/Target project codes
+- Date filtering (Unix timestamp)
+- Mapping mode selection (custom_field or csv)
+- Custom field ID (for custom_field mode)
 - Dry run toggle
 
-Required secrets:
-- `QASE_TOKEN_WS_A` - Source workspace token
-- `QASE_TOKEN_WS_B` - Target workspace token
+**Required secrets:**
+- `QASE_SOURCE_API_TOKEN` - Source workspace token
+- `QASE_TARGET_API_TOKEN` - Target workspace token
 
-Required variables:
+**Required variables:**
 - `QASE_SOURCE_PROJECT` - Source project code
 - `QASE_TARGET_PROJECT` - Target project code
+
+### Simple Migration Workflow
+
+For simpler use cases, there's also a single-step workflow (`.github/workflows/cross-workspace.yml`) that runs the migration directly.
 
 ## Architecture
 
