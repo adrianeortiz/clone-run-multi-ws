@@ -10,6 +10,7 @@ import (
 	"github.com/adrianeortiz/clone-run-multi-ws/api"
 	"github.com/adrianeortiz/clone-run-multi-ws/mapping"
 	"github.com/adrianeortiz/clone-run-multi-ws/qase"
+	"github.com/adrianeortiz/clone-run-multi-ws/utils"
 )
 
 type MigrationResults struct {
@@ -50,34 +51,22 @@ func main() {
 	
 	startTime := time.Now()
 	
-	// Step 1: Fetch runs
-	fmt.Printf("\n--- Step 1: Fetching Test Runs ---\n")
+	// Step 1: Fetch results
+	fmt.Printf("\n--- Step 1: Fetching Test Results ---\n")
 	runsStartTime := time.Now()
-	
-	runs, err := qase.GetRuns(srcClient, config.SourceProject, config.AfterDate)
-	if err != nil {
-		log.Fatalf("Failed to fetch runs: %v", err)
-	}
-	
-	runsDuration := time.Since(runsStartTime)
-	fmt.Printf("Fetched %d runs in %v\n", len(runs), runsDuration)
-	
-	if len(runs) == 0 {
-		fmt.Println("No runs found for the specified date. Nothing to migrate.")
-		return
-	}
-	
-	// Step 2: Fetch results
-	fmt.Printf("\n--- Step 2: Fetching Test Results ---\n")
-	resultsStartTime := time.Now()
 	
 	allResults, err := qase.GetResultsAfterDate(srcClient, config.SourceProject, config.AfterDate)
 	if err != nil {
 		log.Fatalf("Failed to fetch results: %v", err)
 	}
 	
-	resultsDuration := time.Since(resultsStartTime)
+	resultsDuration := time.Since(runsStartTime)
 	fmt.Printf("Fetched %d results in %v\n", len(allResults), resultsDuration)
+	
+	if len(allResults) == 0 {
+		fmt.Println("No results found for the specified date. Nothing to migrate.")
+		return
+	}
 	
 	// Group results by run ID
 	resultsByRun := make(map[int][]qase.Result)
@@ -87,8 +76,8 @@ func main() {
 	
 	fmt.Printf("Grouped results into %d runs\n", len(resultsByRun))
 	
-	// Step 3: Build case mapping
-	fmt.Printf("\n--- Step 3: Building Case Mapping ---\n")
+	// Step 2: Build case mapping
+	fmt.Printf("\n--- Step 2: Building Case Mapping ---\n")
 	
 	var caseMapping map[int]int
 	
@@ -133,8 +122,8 @@ func main() {
 	
 	fmt.Printf("Built mapping for %d cases\n", len(caseMapping))
 	
-	// Step 4: Perform migration
-	fmt.Printf("\n--- Step 4: Performing Migration ---\n")
+	// Step 3: Perform migration
+	fmt.Printf("\n--- Step 3: Performing Migration ---\n")
 	migrationStartTime := time.Now()
 	
 	// Process each run that has results
@@ -144,25 +133,18 @@ func main() {
 	failedRuns := 0
 	
 	for runID, runResults := range resultsByRun {
-		// Find the source run details
-		var srcRun *qase.Run
-		for _, run := range runs {
-			if run.ID == runID {
-				srcRun = &run
-				break
+		// Create run details from results data
+		runTitle := fmt.Sprintf("Migrated Run %d", runID)
+		runDescription := fmt.Sprintf("Migrated run with %d results from source workspace", len(runResults))
+		
+		// Use the first result's end time to create a meaningful run title
+		if len(runResults) > 0 {
+			if endTime, err := time.Parse("2006-01-02T15:04:05-07:00", runResults[0].EndTime); err == nil {
+				runTitle = fmt.Sprintf("Migrated Run %d (%s)", runID, endTime.Format("2006-01-02 15:04"))
 			}
 		}
 		
-		if srcRun == nil {
-			fmt.Printf("Warning: Could not find run details for run ID %d\n", runID)
-			srcRun = &qase.Run{
-				ID:          runID,
-				Title:       fmt.Sprintf("Run %d", runID),
-				Description: "Migrated run",
-			}
-		}
-		
-		fmt.Printf("\nProcessing run %d: %s (%d results)\n", runID, srcRun.Title, len(runResults))
+		fmt.Printf("\nProcessing run %d: %s (%d results)\n", runID, runTitle, len(runResults))
 		
 		// Transform results to target case IDs
 		bulkItems, skipped := transformResults(runResults, caseMapping, config.StatusMap)
@@ -177,17 +159,17 @@ func main() {
 		
 		// Handle dry run mode
 		if config.DryRun {
-			fmt.Printf("DRY RUN MODE - Would create run '%s' with %d results\n", srcRun.Title, len(bulkItems))
+			fmt.Printf("DRY RUN MODE - Would create run '%s' with %d results\n", runTitle, len(bulkItems))
 			successfulRuns++
 			totalResults += len(bulkItems)
 			continue
 		}
 		
 		// Create target run
-		fmt.Printf("Creating target run: %s\n", srcRun.Title)
-		tgtRun, err := qase.CreateRun(tgtClient, config.TargetProject, srcRun.Title, srcRun.Description)
+		fmt.Printf("Creating target run: %s\n", runTitle)
+		tgtRun, err := qase.CreateRun(tgtClient, config.TargetProject, runTitle, runDescription)
 		if err != nil {
-			fmt.Printf("Failed to create target run for %s: %v\n", srcRun.Title, err)
+			fmt.Printf("Failed to create target run for %s: %v\n", runTitle, err)
 			failedRuns++
 			continue
 		}
@@ -221,7 +203,7 @@ func main() {
 		TotalResults:      totalResults,
 		TotalSkipped:      totalSkipped,
 		TotalDuration:     totalDuration,
-		RunsDuration:      runsDuration,
+		RunsDuration:      resultsDuration,
 		ResultsDuration:   resultsDuration,
 		MigrationDuration: migrationDuration,
 	}
@@ -327,11 +309,11 @@ func loadConfig() Config {
 		log.Fatal("QASE_TARGET_PROJECT is required")
 	}
 	
-	// Parse after date
-	afterDateStr := getEnv("QASE_AFTER_DATE", "2025-08-18T00:00:00Z")
-	afterDate, err := time.Parse(time.RFC3339, afterDateStr)
+	// Parse after date (Unix timestamp)
+	afterDateStr := getEnv("QASE_AFTER_DATE", "1755500400")
+	afterDate, err := utils.ParseUnixTimestamp(afterDateStr)
 	if err != nil {
-		log.Fatalf("Invalid QASE_AFTER_DATE format: %v", err)
+		log.Fatalf("Invalid QASE_AFTER_DATE format (must be Unix timestamp): %v", err)
 	}
 	config.AfterDate = afterDate
 	
