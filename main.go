@@ -81,27 +81,13 @@ func main() {
 		fmt.Printf("Built mapping with %d entries\n", len(caseMapping))
 	}
 
-	// Fetch source runs after the specified date
-	fmt.Printf("Fetching runs from source project after %s...\n", config.AfterDate.Format("2006-01-02"))
-	srcRuns, err := qase.GetRuns(srcClient, config.SourceProject, config.AfterDate)
-	if err != nil {
-		log.Fatalf("Failed to fetch source runs: %v", err)
-	}
-
-	if len(srcRuns) == 0 {
-		fmt.Println("No runs found after the specified date. Nothing to migrate.")
-		return
-	}
-
-	fmt.Printf("Found %d runs to migrate\n", len(srcRuns))
-
 	// Write mapping artifact
 	if err := writeMappingArtifact(caseMapping); err != nil {
 		log.Printf("Warning: Failed to write mapping artifact: %v", err)
 	}
 
-	// SIMPLIFIED APPROACH: Use the date-based results API directly
-	fmt.Printf("Using simplified date-based approach - fetching results directly after %s...\n", config.AfterDate.Format("2006-01-02"))
+	// Fetch all results after the specified date using results API
+	fmt.Printf("Fetching results from source project after %s...\n", config.AfterDate.Format("2006-01-02"))
 
 	startTime := time.Now()
 
@@ -164,23 +150,21 @@ func main() {
 			fmt.Printf("\n--- Processing run %d/%d: ID %d with %d results ---\n",
 				index+1, len(resultsByRun), runID, len(results))
 
-			// Find the source run details
-			var srcRun *qase.Run
-			for _, run := range srcRuns {
-				if run.ID == runID {
-					srcRun = &run
-					break
+			// Create run details from results data
+			// Use the first result's end time to create a meaningful run title
+			var runTitle string
+			var runDescription string
+			if len(results) > 0 {
+				// Parse the end time from the first result
+				if endTime, err := time.Parse("2006-01-02T15:04:05-07:00", results[0].EndTime); err == nil {
+					runTitle = fmt.Sprintf("Migrated Run %d (%s)", runID, endTime.Format("2006-01-02 15:04"))
+				} else {
+					runTitle = fmt.Sprintf("Migrated Run %d", runID)
 				}
-			}
-
-			if srcRun == nil {
-				fmt.Printf("Warning: Could not find run details for run ID %d\n", runID)
-				// Use a default title
-				srcRun = &qase.Run{
-					ID:          runID,
-					Title:       fmt.Sprintf("Run %d", runID),
-					Description: "Migrated run",
-				}
+				runDescription = fmt.Sprintf("Migrated run with %d results from source workspace", len(results))
+			} else {
+				runTitle = fmt.Sprintf("Run %d", runID)
+				runDescription = "Migrated run"
 			}
 
 			// Transform results to target case IDs
@@ -191,7 +175,7 @@ func main() {
 
 			// Handle dry run mode
 			if config.DryRun {
-				fmt.Printf("DRY RUN MODE - Would create run '%s' with %d results\n", srcRun.Title, len(bulkItems))
+				fmt.Printf("DRY RUN MODE - Would create run '%s' with %d results\n", runTitle, len(bulkItems))
 				resultsChan <- runResult{
 					runID: runID, success: true, results: len(bulkItems), skipped: skipped,
 					runDuration: time.Since(runStartTime),
@@ -200,10 +184,10 @@ func main() {
 			}
 
 			// Create target run
-			fmt.Printf("Creating target run: %s\n", srcRun.Title)
-			tgtRun, err := qase.CreateRun(tgtClient, config.TargetProject, srcRun.Title, srcRun.Description)
+			fmt.Printf("Creating target run: %s\n", runTitle)
+			tgtRun, err := qase.CreateRun(tgtClient, config.TargetProject, runTitle, runDescription)
 			if err != nil {
-				log.Printf("Failed to create target run for %s: %v", srcRun.Title, err)
+				log.Printf("Failed to create target run for %s: %v", runTitle, err)
 				resultsChan <- runResult{runID: runID, success: false, error: err, runDuration: time.Since(runStartTime)}
 				return
 			}

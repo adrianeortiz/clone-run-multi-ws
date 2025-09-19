@@ -12,23 +12,23 @@ import (
 
 // Run represents a test run
 type Run struct {
-	ID          int       `json:"id"`
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
-	Status      int       `json:"status"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	StartTime   time.Time `json:"start_time"`
-	EndTime     time.Time `json:"end_time"`
-}
-
-// RunListResponse represents the API response for run list
-type RunListResponse struct {
-	Status bool `json:"status"`
-	Result struct {
-		Total    int   `json:"total"`
-		Entities []Run `json:"entities"`
-	} `json:"result"`
+	ID             int                     `json:"id"`
+	Title          string                  `json:"title"`
+	Description    *string                 `json:"description"`
+	Status         int                     `json:"status"`
+	StatusText     string                  `json:"status_text"`
+	StartTime      time.Time               `json:"start_time"`
+	EndTime        time.Time               `json:"end_time"`
+	Public         bool                    `json:"public"`
+	Stats          map[string]interface{}  `json:"stats"`
+	TimeSpent      int                     `json:"time_spent"`
+	ElapsedTime    int                     `json:"elapsed_time"`
+	UserID         int                     `json:"user_id"`
+	Environment    *string                 `json:"environment"`
+	Milestone      *map[string]interface{} `json:"milestone"`
+	CustomFields   []interface{}           `json:"custom_fields"`
+	Tags           []interface{}           `json:"tags"`
+	Configurations []interface{}           `json:"configurations"`
 }
 
 // CreateRunRequest represents a request to create a new run
@@ -44,72 +44,6 @@ type CreateRunResponse struct {
 	Result struct {
 		ID int `json:"id"`
 	} `json:"result"`
-}
-
-// GetRuns fetches all runs for a project with pagination and date filtering
-func GetRuns(c *api.Client, project string, afterDate time.Time) ([]Run, error) {
-	var allRuns []Run
-	limit := 100
-	maxPages := 1000 // Safety limit to prevent infinite loops
-
-	fmt.Printf("Fetching runs for project %s after %s...\n", project, afterDate.Format("2006-01-02 15:04:05"))
-
-	// Debug: Check if afterDate is zero time
-	if afterDate.IsZero() {
-		fmt.Printf("WARNING: afterDate is zero time! This will fetch ALL runs.\n")
-	}
-
-	for page := 1; page <= maxPages; page++ {
-		// Build URL with pagination
-		u := fmt.Sprintf("/run/%s?limit=%d&page=%d", project, limit, page)
-
-		req, err := c.NewRequest("GET", u, nil)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create request: %w", err)
-		}
-
-		resp, err := c.HTTP.Do(req)
-		if err != nil {
-			return nil, fmt.Errorf("failed to make request: %w", err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
-		}
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read response: %w", err)
-		}
-
-		var response RunListResponse
-		if err := json.Unmarshal(body, &response); err != nil {
-			return nil, fmt.Errorf("failed to parse response: %w", err)
-		}
-
-		// Filter runs by date
-		pageRunsAfterDate := 0
-		for _, run := range response.Result.Entities {
-			if run.CreatedAt.After(afterDate) {
-				allRuns = append(allRuns, run)
-				pageRunsAfterDate++
-			}
-		}
-
-		fmt.Printf("Page %d: %d total runs, %d after %s (total filtered: %d)\n",
-			page, len(response.Result.Entities), pageRunsAfterDate, afterDate.Format("2006-01-02"), len(allRuns))
-
-		// Check if we've fetched all runs
-		if len(response.Result.Entities) < limit {
-			fmt.Printf("Reached end of runs (got %d < limit %d)\n", len(response.Result.Entities), limit)
-			break
-		}
-	}
-
-	fmt.Printf("Total runs found after %s: %d\n", afterDate.Format("2006-01-02"), len(allRuns))
-	return allRuns, nil
 }
 
 // CreateRun creates a new test run in the target project

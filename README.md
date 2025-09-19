@@ -1,18 +1,21 @@
 # Cross-Workspace Test Run Migration
 
-This tool clones ALL test runs from a Qase project in Workspace A (Token A) to a project in Workspace B (Token B) that were created after a specified date, handling different case IDs via either a target-side custom field or a CSV mapping.
+This tool migrates test execution results from a Qase project in Workspace A (Token A) to a project in Workspace B (Token B) that were executed after a specified date, handling different case IDs via either a target-side custom field or a CSV mapping.
+
+**Note**: This tool uses the Qase Results API (`/v1/result/{code}`) to fetch test execution data directly, making it more efficient than traditional run-based migration approaches.
 
 ## Features
 
-- **Dual HTTP clients** for source and target workspaces
-- **Date filtering** to migrate runs created after a specific date
-- **Automatic run creation** in target project
+- **Results-based migration** using Qase Results API for efficient data fetching
+- **Date filtering** to migrate test results executed after a specific date
+- **Automatic run creation** in target project with meaningful titles
 - **Two mapping modes**: custom field or CSV file
 - **Bulk posting** with chunking and retries
 - **Dry-run mode** for testing
 - **Status translation** support
 - **Environment-driven configuration**
 - **Clear logging** (no secrets in logs)
+- **Concurrent processing** for faster migration
 
 ## Environment Variables
 
@@ -27,7 +30,7 @@ This tool clones ALL test runs from a Qase project in Workspace A (Token A) to a
 
 - `QASE_SOURCE_API_BASE` - Source API base URL (default: https://api.qase.io)
 - `QASE_TARGET_API_BASE` - Target API base URL (default: https://api.qase.io)
-- `QASE_AFTER_DATE` - Only migrate runs created after this date (Unix timestamp, default: 1755500400)
+- `QASE_AFTER_DATE` - Only migrate test results executed after this date (Unix timestamp, default: 1755500400)
 - `QASE_MATCH_MODE` - Mapping mode: `custom_field` or `csv` (default: custom_field)
 - `QASE_CF_ID` - Custom field ID for custom_field mode (required if using custom_field)
 - `QASE_MAPPING_CSV` - Path to CSV mapping file (required if using csv mode)
@@ -104,9 +107,19 @@ Required variables:
 The code is organized into packages:
 
 - `api/` - HTTP client wrapper for Qase API
-- `qase/` - Qase-specific data structures and API calls
+- `qase/` - Qase-specific data structures and API calls (results, cases, runs)
 - `mapping/` - Case ID mapping logic
+- `utils/` - Utility functions for date parsing
+- `tools/` - Helper scripts for custom field management
 - `main.go` - Main orchestration and configuration
+
+## How It Works
+
+1. **Fetch Results**: Uses the Results API to get all test execution results after the specified date
+2. **Group by Run**: Groups results by their original run ID to recreate run structure
+3. **Map Cases**: Maps source case IDs to target case IDs using custom field or CSV mapping
+4. **Create Runs**: Creates new runs in the target workspace with meaningful titles
+5. **Post Results**: Bulk posts the mapped results to the target runs
 
 ## Error Handling
 
