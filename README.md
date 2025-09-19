@@ -88,9 +88,7 @@ source_case_id,target_case_id
 
 ## GitHub Actions
 
-### Multi-Step Migration Pipeline
-
-The main workflow (`.github/workflows/migration-pipeline.yml`) provides a comprehensive 3-step migration process:
+The migration pipeline (`.github/workflows/migration-pipeline.yml`) provides a comprehensive 3-step migration process:
 
 1. **Analyze Project Data** - Analyzes source and target projects
 2. **Fetch Test Results** - Uses Results API to fetch all test execution data
@@ -110,10 +108,6 @@ The main workflow (`.github/workflows/migration-pipeline.yml`) provides a compre
 **Required variables:**
 - `QASE_SOURCE_PROJECT` - Source project code
 - `QASE_TARGET_PROJECT` - Target project code
-
-### Simple Migration Workflow
-
-For simpler use cases, there's also a single-step workflow (`.github/workflows/cross-workspace.yml`) that runs the migration directly.
 
 ## Architecture
 
