@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       after_date:
-        description: 'Only migrate runs created after this date (Unix timestamp)'
+        description: 'Only migrate test results executed after this date (Unix timestamp)'
         required: false
         default: '1755500400'
         type: string
