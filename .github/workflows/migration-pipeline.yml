@@ -112,11 +112,11 @@ jobs:
         path: results-data.json
         retention-days: 30
 
-  # Step 3: Migrate Data
-  migrate:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    needs: [analyze, fetch-results]
+         # Step 3: Migrate Data
+         migrate:
+           runs-on: ubuntu-latest
+           timeout-minutes: 120
+           needs: [analyze, fetch-results]
     
     steps:
     - name: Checkout code

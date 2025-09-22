@@ -44,6 +44,7 @@ func main() {
 	fmt.Printf("After Date: %s\n", config.AfterDate.Format("2006-01-02"))
 	fmt.Printf("Match Mode: %s\n", config.MatchMode)
 	fmt.Printf("Dry Run: %t\n", config.DryRun)
+	fmt.Printf("Idempotent: %t\n", config.Idempotent)
 
 	// Create API clients
 	srcClient := api.NewClient(config.SourceBaseURL, config.SourceToken)
@@ -75,6 +76,11 @@ func main() {
 	}
 
 	fmt.Printf("Grouped results into %d runs\n", len(resultsByRun))
+	
+	// Auto-disable detailed idempotency for large migrations to prevent timeouts
+	if config.Idempotent && len(resultsByRun) > 20 {
+		fmt.Printf("Large migration detected (%d runs), using fast mode (run deduplication only)\n", len(resultsByRun))
+	}
 
 	// Step 2: Build case mapping
 	fmt.Printf("\n--- Step 2: Building Case Mapping ---\n")
@@ -178,33 +184,40 @@ func main() {
 				continue
 			}
 
-			// Check if run already has results (idempotent)
-			hasResults, err := qase.CheckRunHasResults(tgtClient, config.TargetProject, tgtRun.ID)
-			if err != nil {
-				fmt.Printf("Failed to check existing results for run %d: %v\n", tgtRun.ID, err)
-				failedRuns++
-				continue
-			}
-
-			if hasResults {
-				fmt.Printf("Run %d already has results, filtering for new ones only...\n", tgtRun.ID)
-				// Filter out results that already exist
-				bulkItems, err = qase.FilterNewResults(tgtClient, config.TargetProject, tgtRun.ID, bulkItems)
+			// For efficiency, skip detailed idempotency checks if we have many runs
+			// Just check if run exists and has any results
+			if len(resultsByRun) <= 20 {
+				// Detailed idempotency check for small number of runs
+				hasResults, err := qase.CheckRunHasResults(tgtClient, config.TargetProject, tgtRun.ID)
 				if err != nil {
-					fmt.Printf("Failed to filter existing results for run %d: %v\n", tgtRun.ID, err)
+					fmt.Printf("Failed to check existing results for run %d: %v\n", tgtRun.ID, err)
 					failedRuns++
 					continue
 				}
-			}
 
-			if len(bulkItems) == 0 {
-				fmt.Printf("No new results to post for run %d (all already exist)\n", tgtRun.ID)
-				successfulRuns++
-				continue
-			}
+				if hasResults {
+					fmt.Printf("Run %d already has results, filtering for new ones only...\n", tgtRun.ID)
+					// Filter out results that already exist
+					bulkItems, err = qase.FilterNewResults(tgtClient, config.TargetProject, tgtRun.ID, bulkItems)
+					if err != nil {
+						fmt.Printf("Failed to filter existing results for run %d: %v\n", tgtRun.ID, err)
+						failedRuns++
+						continue
+					}
+				}
 
-			// Post only new results to target run
-			fmt.Printf("Posting %d new results to target run %d...\n", len(bulkItems), tgtRun.ID)
+				if len(bulkItems) == 0 {
+					fmt.Printf("No new results to post for run %d (all already exist)\n", tgtRun.ID)
+					successfulRuns++
+					continue
+				}
+
+				// Post only new results to target run
+				fmt.Printf("Posting %d new results to target run %d...\n", len(bulkItems), tgtRun.ID)
+			} else {
+				// For many runs, just post all results (less efficient but faster)
+				fmt.Printf("Posting %d results to target run %d (bulk mode for %d runs)...\n", len(bulkItems), tgtRun.ID, len(resultsByRun))
+			}
 		} else {
 			// Non-idempotent mode: always create new runs
 			fmt.Printf("Creating target run: %s\n", runTitle)

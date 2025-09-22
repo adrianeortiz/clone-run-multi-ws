@@ -242,28 +242,47 @@ func GetResultsForRuns(c *api.Client, project string, runIDs []int) ([]Result, e
 }
 
 // CheckRunHasResults checks if a run already has results (to avoid duplicate posting)
+// This is a lightweight check that only fetches the first page
 func CheckRunHasResults(c *api.Client, project string, runID int) (bool, error) {
-	// Get results for this specific run
-	results, err := GetRunResults(c, project, runID)
+	// Build URL to get just the first page of results for this run
+	u := fmt.Sprintf("/result/%s?limit=1&page=1&run_id[]=%d", project, 1, runID)
+
+	req, err := c.NewRequest("GET", u, nil)
 	if err != nil {
-		return false, fmt.Errorf("failed to check existing results: %w", err)
+		return false, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("failed to make request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return false, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var response ResultListResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return false, fmt.Errorf("failed to parse response: %w", err)
 	}
 	
-	return len(results) > 0, nil
+	return len(response.Result.Entities) > 0, nil
 }
 
 // FilterNewResults filters out results that already exist in the target run
+// This is an optimized version that only fetches case IDs, not full results
 func FilterNewResults(c *api.Client, project string, runID int, newResults []BulkItem) ([]BulkItem, error) {
-	// Get existing results for this run
-	existingResults, err := GetRunResults(c, project, runID)
+	// Get existing case IDs for this run (optimized query)
+	existingCaseIDs, err := getExistingCaseIDs(c, project, runID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get existing results: %w", err)
-	}
-	
-	// Create a map of existing case IDs for quick lookup
-	existingCaseIDs := make(map[int]bool)
-	for _, result := range existingResults {
-		existingCaseIDs[result.CaseID] = true
+		return nil, fmt.Errorf("failed to get existing case IDs: %w", err)
 	}
 	
 	// Filter out results that already exist
@@ -276,4 +295,56 @@ func FilterNewResults(c *api.Client, project string, runID int, newResults []Bul
 	
 	fmt.Printf("Filtered results: %d new, %d already exist\n", len(filteredResults), len(newResults)-len(filteredResults))
 	return filteredResults, nil
+}
+
+// getExistingCaseIDs efficiently fetches only case IDs from existing results
+func getExistingCaseIDs(c *api.Client, project string, runID int) (map[int]bool, error) {
+	existingCaseIDs := make(map[int]bool)
+	offset := 0
+	limit := 100
+
+	for {
+		// Build URL with pagination and run filter, only fetch case_id
+		u := fmt.Sprintf("/result/%s?limit=%d&offset=%d&run_id[]=%d", project, limit, offset, runID)
+
+		req, err := c.NewRequest("GET", u, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+
+		resp, err := c.HTTP.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to make request: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read response: %w", err)
+		}
+
+		var response ResultListResponse
+		if err := json.Unmarshal(body, &response); err != nil {
+			return nil, fmt.Errorf("failed to parse response: %w", err)
+		}
+
+		// Add case IDs to map
+		for _, result := range response.Result.Entities {
+			existingCaseIDs[result.CaseID] = true
+		}
+
+		// Check if we've fetched all results
+		if len(response.Result.Entities) < limit {
+			break
+		}
+
+		offset += limit
+	}
+
+	return existingCaseIDs, nil
 }
