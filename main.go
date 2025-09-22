@@ -378,6 +378,9 @@ func transformResults(results []qase.Result, caseMapping map[int]int, statusMap 
 	var bulkItems []qase.BulkItem
 	skipped := 0
 
+	// Maximum time allowed by Qase API (1 year in seconds)
+	const maxTimeSeconds = 31536000
+
 	for _, result := range results {
 		targetCaseID, exists := caseMapping[result.CaseID]
 		if !exists {
@@ -393,10 +396,22 @@ func transformResults(results []qase.Result, caseMapping map[int]int, statusMap 
 			}
 		}
 
+		// Validate and cap time value if present
+		var timeSeconds *int
+		if result.Time != nil && *result.Time > 0 {
+			timeInSeconds := *result.Time
+			if timeInSeconds > maxTimeSeconds {
+				fmt.Printf("Warning: Capping time for case %d from %d seconds to %d seconds (max allowed)\n", 
+					result.CaseID, timeInSeconds, maxTimeSeconds)
+				timeInSeconds = maxTimeSeconds
+			}
+			timeSeconds = &timeInSeconds
+		}
+
 		bulkItem := qase.BulkItem{
 			CaseID:  targetCaseID,
 			Status:  status,
-			Time:    result.Time,
+			Time:    timeSeconds,
 			Comment: result.Comment,
 		}
 

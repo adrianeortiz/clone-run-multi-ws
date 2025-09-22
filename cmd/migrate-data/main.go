@@ -76,7 +76,7 @@ func main() {
 	}
 
 	fmt.Printf("Grouped results into %d runs\n", len(resultsByRun))
-	
+
 	// Auto-disable detailed idempotency for large migrations to prevent timeouts
 	if config.Idempotent && len(resultsByRun) > 20 {
 		fmt.Printf("Large migration detected (%d runs), using fast mode (run deduplication only)\n", len(resultsByRun))
@@ -293,6 +293,9 @@ func transformResults(results []qase.Result, caseMapping map[int]int, statusMap 
 	var bulkItems []qase.BulkItem
 	skipped := 0
 
+	// Maximum time allowed by Qase API (1 year in seconds)
+	const maxTimeSeconds = 31536000
+
 	for _, result := range results {
 		// Map case ID
 		targetCaseID, exists := caseMapping[result.CaseID]
@@ -307,11 +310,23 @@ func transformResults(results []qase.Result, caseMapping map[int]int, statusMap 
 			status = mappedStatus
 		}
 
+		// Convert time from milliseconds to seconds and cap at maximum allowed
+		var timeSeconds *int
+		if result.TimeSpentMs > 0 {
+			timeInSeconds := result.TimeSpentMs / 1000
+			if timeInSeconds > maxTimeSeconds {
+				fmt.Printf("Warning: Capping time for case %d from %d seconds to %d seconds (max allowed)\n", 
+					result.CaseID, timeInSeconds, maxTimeSeconds)
+				timeInSeconds = maxTimeSeconds
+			}
+			timeSeconds = &timeInSeconds
+		}
+
 		bulkItem := qase.BulkItem{
 			CaseID:  targetCaseID,
 			Status:  status,
 			Comment: result.Comment,
-			Time:    &result.TimeSpentMs,
+			Time:    timeSeconds,
 		}
 
 		bulkItems = append(bulkItems, bulkItem)
